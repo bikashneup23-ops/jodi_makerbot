@@ -115,6 +115,8 @@ def handle_couple(message):
 
 # --- Start everything ---
 if __name__ == "__main__":
+    print(f"TOKEN loaded: {bool(TOKEN)}")
+    print("Starting bot polling...")
     # Flask in background thread
     threading.Thread(target=run_flask, daemon=True).start()
 
