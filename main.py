@@ -48,6 +48,7 @@ def get_username(user):
 # --- Track every message in group ---
 @bot.message_handler(func=lambda message: message.chat.type in ['group', 'supergroup'])
 def track_members(message):
+    print(f"MSG from chat_id:{message.chat.id} type:{message.chat.type}")
     if message.from_user.is_bot:
         return
     chat_id = message.chat.id
@@ -131,3 +132,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Polling error: {e}")
             time.sleep(5)
+            
