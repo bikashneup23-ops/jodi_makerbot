@@ -124,12 +124,13 @@ if __name__ == "__main__":
     threading.Thread(target=self_ping, daemon=True).start()
     # Clear any existing webhook or polling conflict
     bot.remove_webhook()
-    time.sleep(2)
+    time.sleep(3)
     print("Bot is starting...")
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
             print(f"Polling error: {e}")
+            bot.remove_webhook()
             time.sleep(5)
             
