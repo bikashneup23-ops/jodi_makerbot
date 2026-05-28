@@ -119,10 +119,11 @@ if __name__ == "__main__":
     print("Starting bot polling...")
     # Flask in background thread
     threading.Thread(target=run_flask, daemon=True).start()
-
     # Self-ping in background thread
     threading.Thread(target=self_ping, daemon=True).start()
-
+    # Clear any existing webhook or polling conflict
+    bot.remove_webhook()
+    time.sleep(2)
     print("Bot is starting...")
     while True:
         try:
