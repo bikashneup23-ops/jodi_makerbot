@@ -117,20 +117,35 @@ def handle_couple(message):
 # --- Start everything ---
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
-    print("Starting bot polling...")
+    print("Clearing any existing connections...")
+    # Force delete webhook using requests directly
+    try:
+        requests.get(
+            f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true",
+            timeout=10
+        )
+        print("Webhook cleared!")
+    except Exception as e:
+        print(f"Webhook clear error: {e}")
+    
+    time.sleep(10)  # Wait longer for old instance to fully die
+    
     # Flask in background thread
     threading.Thread(target=run_flask, daemon=True).start()
     # Self-ping in background thread
     threading.Thread(target=self_ping, daemon=True).start()
-    # Clear any existing webhook or polling conflict
-    bot.remove_webhook()
-    time.sleep(3)
+    
     print("Bot is starting...")
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
         except Exception as e:
             print(f"Polling error: {e}")
-            bot.remove_webhook()
-            time.sleep(5)
-            
+            try:
+                requests.get(
+                    f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true",
+                    timeout=10
+                )
+            except:
+                pass
+            time.sleep(10)
