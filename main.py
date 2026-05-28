@@ -1,17 +1,43 @@
 import os
 import time
 import random
+import threading
+import requests
+from flask import Flask
 import telebot
 
 # --- Configuration ---
 TOKEN = os.environ.get("BOT_TOKEN")
+RENDER_URL = os.environ.get("RENDER_URL")  # e.g. https://jodi-makerbot.onrender.com
+PORT = int(os.environ.get("PORT", 10000))
+
 bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
 # --- Data Storage ---
 # {chat_id: {user_id: name}}
 group_members = {}
 # {chat_id: {"couple": (name1, name2), "expiry": timestamp}}
 couple_history = {}
+
+# --- Flask Health Check ---
+@app.route('/')
+def health_check():
+    return "Bot is running!", 200
+
+def run_flask():
+    app.run(host="0.0.0.0", port=PORT)
+
+# --- Self-Ping to prevent Render free tier sleep ---
+def self_ping():
+    while True:
+        time.sleep(600)  # every 10 minutes
+        if RENDER_URL:
+            try:
+                requests.get(RENDER_URL, timeout=10)
+                print("Self-ping successful")
+            except Exception as e:
+                print(f"Self-ping failed: {e}")
 
 # --- Helper ---
 def get_username(user):
@@ -87,8 +113,14 @@ def handle_couple(message):
         f"💘 Couple of the Hour 💘\n\n{u1_name} ❤️ {u2_name}\n\n🕐 This couple refreshes in 1 hour!"
     )
 
-# --- Start Bot ---
+# --- Start everything ---
 if __name__ == "__main__":
+    # Flask in background thread
+    threading.Thread(target=run_flask, daemon=True).start()
+
+    # Self-ping in background thread
+    threading.Thread(target=self_ping, daemon=True).start()
+
     print("Bot is starting...")
     while True:
         try:
