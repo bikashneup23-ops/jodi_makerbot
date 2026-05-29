@@ -8,8 +8,8 @@ import telebot
 # --- Configuration ---
 TOKEN = os.environ.get("BOT_TOKEN")
 RENDER_URL = os.environ.get("RENDER_URL")
-GITHUB_USER = os.environ.get("GITHUB_USER")  # your github username
-GITHUB_REPO = os.environ.get("GITHUB_REPO")  # your github repo name
+GITHUB_USER = os.environ.get("GITHUB_USER")
+GITHUB_REPO = os.environ.get("GITHUB_REPO")
 PORT = int(os.environ.get("PORT", 10000))
 
 bot = telebot.TeleBot(TOKEN)
@@ -20,25 +20,6 @@ group_members = {}
 couple_history = {}
 
 # --- Dare Data ---
-DARES = [
-    {
-        "text": "💍 Dare: {} must PROPOSE to {} right now in the group!",
-        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/propose.png"
-    },
-    {
-        "text": "🤗 Dare: {} must HUG {} right now in the group!",
-        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/hug.png"
-    },
-    {
-        "text": "💋 Dare: {} must KISS {} right now in the group!",
-        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/kiss.png"
-    },
-    {
-        "text": "💒 Dare: {} must MARRY {} right now in the group!",
-        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/marry.png"
-    },
-]
-
 def get_dare_urls():
     base = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main"
     return [
@@ -53,6 +34,20 @@ def get_username(user):
     if user.username:
         return f"@{user.username}"
     return user.first_name
+
+# --- Auto fetch group members ---
+def fetch_group_members(chat_id):
+    try:
+        # Get admin list first (always works)
+        admins = bot.get_chat_administrators(chat_id)
+        if chat_id not in group_members:
+            group_members[chat_id] = {}
+        for admin in admins:
+            if not admin.user.is_bot:
+                group_members[chat_id][admin.user.id] = get_username(admin.user)
+        print(f"Fetched {len(group_members[chat_id])} admins for chat {chat_id}")
+    except Exception as e:
+        print(f"Error fetching members: {e}")
 
 # --- /couple command ---
 @bot.message_handler(commands=['couple'])
@@ -70,6 +65,9 @@ def handle_couple(message):
     if chat_id not in group_members:
         group_members[chat_id] = {}
     group_members[chat_id][message.from_user.id] = get_username(message.from_user)
+
+    # Try to fetch more members automatically
+    fetch_group_members(chat_id)
 
     # Return cached couple if still within 1 hour
     if chat_id in couple_history:
@@ -105,7 +103,7 @@ def handle_couple(message):
     # Pick random dare
     dare = random.choice(get_dare_urls())
 
-    # Cache the couple and dare for 1 hour
+    # Cache for 1 hour
     couple_history[chat_id] = {
         "couple": (u1_name, u2_name),
         "dare": dare,
@@ -124,7 +122,6 @@ def handle_couple(message):
 # --- Track every message ---
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
-    print(f"MSG from chat_id:{message.chat.id} type:{message.chat.type}")
     if message.from_user.is_bot:
         return
     if message.chat.type not in ['group', 'supergroup']:
@@ -167,8 +164,6 @@ def set_webhook():
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
     print(f"RENDER_URL: {RENDER_URL}")
-    print(f"GITHUB_USER: {GITHUB_USER}")
-    print(f"GITHUB_REPO: {GITHUB_REPO}")
     set_webhook()
     print("Bot is starting in webhook mode...")
     app.run(host="0.0.0.0", port=PORT)
