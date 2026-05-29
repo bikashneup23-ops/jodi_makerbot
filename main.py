@@ -8,6 +8,8 @@ import telebot
 # --- Configuration ---
 TOKEN = os.environ.get("BOT_TOKEN")
 RENDER_URL = os.environ.get("RENDER_URL")
+GITHUB_USER = os.environ.get("GITHUB_USER")  # your github username
+GITHUB_REPO = os.environ.get("GITHUB_REPO")  # your github repo name
 PORT = int(os.environ.get("PORT", 10000))
 
 bot = telebot.TeleBot(TOKEN)
@@ -17,13 +19,42 @@ app = Flask(__name__)
 group_members = {}
 couple_history = {}
 
+# --- Dare Data ---
+DARES = [
+    {
+        "text": "💍 Dare: {} must PROPOSE to {} right now in the group!",
+        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/propose.png"
+    },
+    {
+        "text": "🤗 Dare: {} must HUG {} right now in the group!",
+        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/hug.png"
+    },
+    {
+        "text": "💋 Dare: {} must KISS {} right now in the group!",
+        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/kiss.png"
+    },
+    {
+        "text": "💒 Dare: {} must MARRY {} right now in the group!",
+        "image": f"https://raw.githubusercontent.com/{{github_user}}/{{github_repo}}/main/marry.png"
+    },
+]
+
+def get_dare_urls():
+    base = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main"
+    return [
+        {"text": "💍 Dare: {} must PROPOSE to {} right now in the group!", "image": f"{base}/propose.png"},
+        {"text": "🤗 Dare: {} must HUG {} right now in the group!", "image": f"{base}/hug.png"},
+        {"text": "💋 Dare: {} must KISS {} right now in the group!", "image": f"{base}/kiss.png"},
+        {"text": "💒 Dare: {} must MARRY {} right now in the group!", "image": f"{base}/marry.png"},
+    ]
+
 # --- Helper ---
 def get_username(user):
     if user.username:
         return f"@{user.username}"
     return user.first_name
 
-# --- /couple command --- (MUST be before track_members)
+# --- /couple command ---
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
     print(f"COUPLE CMD from chat_id:{message.chat.id} type:{message.chat.type}")
@@ -45,11 +76,15 @@ def handle_couple(message):
         data = couple_history[chat_id]
         if current_time < data['expiry']:
             u1, u2 = data['couple']
+            dare = data['dare']
             remaining = int((data['expiry'] - current_time) / 60)
-            bot.send_message(
-                chat_id,
-                f"💘 Couple of the Hour 💘\n\n{u1} ❤️ {u2}\n\n🕐 Refreshes in {remaining} minute(s)"
+            caption = (
+                f"💘 Couple of the Hour 💘\n\n"
+                f"{u1} ❤️ {u2}\n\n"
+                f"{dare['text'].format(u1, u2)}\n\n"
+                f"🕐 Refreshes in {remaining} minute(s)"
             )
+            bot.send_photo(chat_id, dare['image'], caption=caption)
             return
 
     members = group_members[chat_id]
@@ -61,25 +96,35 @@ def handle_couple(message):
         )
         return
 
+    # Pick 2 random members
     user_ids = list(members.keys())
     selected_ids = random.sample(user_ids, 2)
     u1_name = members[selected_ids[0]]
     u2_name = members[selected_ids[1]]
 
+    # Pick random dare
+    dare = random.choice(get_dare_urls())
+
+    # Cache the couple and dare for 1 hour
     couple_history[chat_id] = {
         "couple": (u1_name, u2_name),
+        "dare": dare,
         "expiry": current_time + 3600
     }
 
-    bot.send_message(
-        chat_id,
-        f"💘 Couple of the Hour 💘\n\n{u1_name} ❤️ {u2_name}\n\n🕐 This couple refreshes in 1 hour!"
+    caption = (
+        f"💘 Couple of the Hour 💘\n\n"
+        f"{u1_name} ❤️ {u2_name}\n\n"
+        f"{dare['text'].format(u1_name, u2_name)}\n\n"
+        f"🕐 This couple refreshes in 1 hour!"
     )
 
-# --- Track every message in group ---
+    bot.send_photo(chat_id, dare['image'], caption=caption)
+
+# --- Track every message ---
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
-    print(f"MSG from chat_id:{message.chat.id} type:{message.chat.type} text:{message.text}")
+    print(f"MSG from chat_id:{message.chat.id} type:{message.chat.type}")
     if message.from_user.is_bot:
         return
     if message.chat.type not in ['group', 'supergroup']:
@@ -90,13 +135,11 @@ def track_members(message):
     if chat_id not in group_members:
         group_members[chat_id] = {}
     group_members[chat_id][user_id] = user_name
-    print(f"Tracked {user_name} in {chat_id}, total members: {len(group_members[chat_id])}")
 
 # --- Webhook route ---
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     json_str = request.get_data(as_text=True)
-    print(f"Webhook received: {json_str[:100]}")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
     return 'ok', 200
@@ -124,6 +167,8 @@ def set_webhook():
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
     print(f"RENDER_URL: {RENDER_URL}")
+    print(f"GITHUB_USER: {GITHUB_USER}")
+    print(f"GITHUB_REPO: {GITHUB_REPO}")
     set_webhook()
     print("Bot is starting in webhook mode...")
     app.run(host="0.0.0.0", port=PORT)
