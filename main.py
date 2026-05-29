@@ -1,6 +1,7 @@
 import os
 import time
 import random
+import json
 import requests
 from flask import Flask, request
 import telebot
@@ -11,13 +12,35 @@ RENDER_URL = os.environ.get("RENDER_URL")
 GITHUB_USER = os.environ.get("GITHUB_USER")
 GITHUB_REPO = os.environ.get("GITHUB_REPO")
 PORT = int(os.environ.get("PORT", 10000))
+DATA_FILE = "data.json"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# --- Data Storage ---
-group_members = {}
-couple_history = {}
+# --- Load/Save Data ---
+def load_data():
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r") as f:
+                data = json.load(f)
+                return (
+                    {int(k): v for k, v in data.get("members", {}).items()},
+                    {int(k): v for k, v in data.get("couples", {}).items()}
+                )
+        except:
+            pass
+    return {}, {}
+
+def save_data():
+    with open(DATA_FILE, "w") as f:
+        json.dump({
+            "members": {str(k): v for k, v in group_members.items()},
+            "couples": {str(k): v for k, v in couple_history.items()}
+        }, f)
+
+# --- Load existing data on startup ---
+group_members, couple_history = load_data()
+print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
 # --- Dare Data ---
 def get_dare_urls():
@@ -35,20 +58,6 @@ def get_username(user):
         return f"@{user.username}"
     return user.first_name
 
-# --- Auto fetch group members ---
-def fetch_group_members(chat_id):
-    try:
-        # Get admin list first (always works)
-        admins = bot.get_chat_administrators(chat_id)
-        if chat_id not in group_members:
-            group_members[chat_id] = {}
-        for admin in admins:
-            if not admin.user.is_bot:
-                group_members[chat_id][admin.user.id] = get_username(admin.user)
-        print(f"Fetched {len(group_members[chat_id])} admins for chat {chat_id}")
-    except Exception as e:
-        print(f"Error fetching members: {e}")
-
 # --- /couple command ---
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
@@ -65,9 +74,7 @@ def handle_couple(message):
     if chat_id not in group_members:
         group_members[chat_id] = {}
     group_members[chat_id][message.from_user.id] = get_username(message.from_user)
-
-    # Try to fetch more members automatically
-    fetch_group_members(chat_id)
+    save_data()
 
     # Return cached couple if still within 1 hour
     if chat_id in couple_history:
@@ -109,6 +116,7 @@ def handle_couple(message):
         "dare": dare,
         "expiry": current_time + 3600
     }
+    save_data()
 
     caption = (
         f"💘 Couple of the Hour 💘\n\n"
@@ -132,6 +140,7 @@ def track_members(message):
     if chat_id not in group_members:
         group_members[chat_id] = {}
     group_members[chat_id][user_id] = user_name
+    save_data()
 
 # --- Webhook route ---
 @app.route(f'/{TOKEN}', methods=['POST'])
