@@ -223,7 +223,7 @@ def handle_luck(message):
         percent = luck_history[user_id]["percent"]
     else:
         # Generate new luck for today
-        percent = random.randint(0, 100)
+        percent = random.choice([7, 14, 26, 38, 47, 55, 67, 74, 88, 96])
         luck_history[user_id] = {"percent": percent, "date": today}
         save_data()
 
