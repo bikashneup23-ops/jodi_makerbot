@@ -55,6 +55,21 @@ def get_dare_urls():
         {"text": "💒 Dare: {} must MARRY {} right now in the group!", "image": f"{base}/marry.png"},
     ]
 
+# --- Boredom Suggestions ---
+BOREDOM_SUGGESTIONS = [
+    "Go outside and count how many dogs you see 🐕👀",
+    "Open YouTube and click the 3rd recommended video only ▶️🎯",
+    "Scroll your gallery and revisit old memories 🖼️📱",
+    "Stare at the ceiling and rethink your life choices 🧠😶‍🌫️",
+    "Try to balance on one leg for 30 seconds 🦵⏳",
+    "Go check what your neighbors are doing (not in a creepy way 😄) 🏠👀",
+    "Open Netflix and pick the weirdest title you see 🍿🤨",
+    "Watch old cartoons 📺🧸",
+    "Exist… just exist… that's enough 😌🌍",
+    "Check your screen time and feel guilty 📱⏱️😬",
+    "Open Spotify and play a random playlist 🎧🎶",
+]
+
 # --- Helper ---
 def get_username(user):
     if user.username:
@@ -73,13 +88,11 @@ def handle_couple(message):
     chat_id = message.chat.id
     current_time = time.time()
 
-    # Auto-register the person who sent the command
     if chat_id not in group_members:
         group_members[chat_id] = {}
     group_members[chat_id][message.from_user.id] = get_username(message.from_user)
     save_data()
 
-    # Return cached couple if still within 1 hour
     if chat_id in couple_history:
         data = couple_history[chat_id]
         if current_time < data['expiry']:
@@ -104,16 +117,13 @@ def handle_couple(message):
         )
         return
 
-    # Pick 2 random members
     user_ids = list(members.keys())
     selected_ids = random.sample(user_ids, 2)
     u1_name = members[selected_ids[0]]
     u2_name = members[selected_ids[1]]
 
-    # Pick random dare
     dare = random.choice(get_dare_urls())
 
-    # Cache for 1 hour
     couple_history[chat_id] = {
         "couple": (u1_name, u2_name),
         "dare": dare,
@@ -137,11 +147,9 @@ def handle_breakup(message):
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
 
-    # Get who typed the command
     sender = get_username(message.from_user)
-
-    # Get the target username from the command
     parts = message.text.split()
+
     if len(parts) < 2:
         bot.reply_to(message, "❌ Usage: /breakup @username")
         return
@@ -151,13 +159,27 @@ def handle_breakup(message):
         target = f"@{target}"
 
     breakup_image = f"{get_base()}/breakup.png"
-
     caption = (
         f"💔 Great decision {sender}! You deserved better!\n\n"
         f"{target} lost the 💎"
     )
 
     bot.send_photo(message.chat.id, breakup_image, caption=caption)
+
+# --- /gettingbored command ---
+@bot.message_handler(commands=['gettingbored'])
+def handle_gettingbored(message):
+    if message.chat.type not in ['group', 'supergroup']:
+        bot.reply_to(message, "❌ This command only works in group chats!")
+        return
+
+    sender = get_username(message.from_user)
+    suggestion = random.choice(BOREDOM_SUGGESTIONS)
+
+    bot.send_message(
+        message.chat.id,
+        f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}"
+    )
 
 # --- Track every message ---
 @bot.message_handler(func=lambda message: True)
