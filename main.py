@@ -42,9 +42,12 @@ def save_data():
 group_members, couple_history = load_data()
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
-# --- Dare Data ---
+# --- Image URLs ---
+def get_base():
+    return f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main"
+
 def get_dare_urls():
-    base = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/main"
+    base = get_base()
     return [
         {"text": "💍 Dare: {} must PROPOSE to {} right now in the group!", "image": f"{base}/propose.png"},
         {"text": "🤗 Dare: {} must HUG {} right now in the group!", "image": f"{base}/hug.png"},
@@ -126,6 +129,35 @@ def handle_couple(message):
     )
 
     bot.send_photo(chat_id, dare['image'], caption=caption)
+
+# --- /breakup command ---
+@bot.message_handler(commands=['breakup'])
+def handle_breakup(message):
+    if message.chat.type not in ['group', 'supergroup']:
+        bot.reply_to(message, "❌ This command only works in group chats!")
+        return
+
+    # Get who typed the command
+    sender = get_username(message.from_user)
+
+    # Get the target username from the command
+    parts = message.text.split()
+    if len(parts) < 2:
+        bot.reply_to(message, "❌ Usage: /breakup @username")
+        return
+
+    target = parts[1]
+    if not target.startswith("@"):
+        target = f"@{target}"
+
+    breakup_image = f"{get_base()}/breakup.png"
+
+    caption = (
+        f"💔 Great decision {sender}! You deserved better!\n\n"
+        f"{target} lost the 💎"
+    )
+
+    bot.send_photo(message.chat.id, breakup_image, caption=caption)
 
 # --- Track every message ---
 @bot.message_handler(func=lambda message: True)
