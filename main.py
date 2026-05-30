@@ -5,6 +5,7 @@ import json
 import requests
 from flask import Flask, request
 import telebot
+from datetime import datetime
 
 # --- Configuration ---
 TOKEN = os.environ.get("BOT_TOKEN")
@@ -25,21 +26,23 @@ def load_data():
                 data = json.load(f)
                 return (
                     {int(k): v for k, v in data.get("members", {}).items()},
-                    {int(k): v for k, v in data.get("couples", {}).items()}
+                    {int(k): v for k, v in data.get("couples", {}).items()},
+                    data.get("luck", {})
                 )
         except:
             pass
-    return {}, {}
+    return {}, {}, {}
 
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump({
             "members": {str(k): v for k, v in group_members.items()},
-            "couples": {str(k): v for k, v in couple_history.items()}
+            "couples": {str(k): v for k, v in couple_history.items()},
+            "luck": luck_history
         }, f)
 
 # --- Load existing data on startup ---
-group_members, couple_history = load_data()
+group_members, couple_history, luck_history = load_data()
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
 # --- Image URLs ---
@@ -54,6 +57,26 @@ def get_dare_urls():
         {"text": "💋 Dare: {} must KISS {} right now in the group!", "image": f"{base}/kiss.png"},
         {"text": "💒 Dare: {} must MARRY {} right now in the group!", "image": f"{base}/marry.png"},
     ]
+
+# --- Luck Ranges ---
+LUCK_RANGES = [
+    {"min": 0,  "max": 10,  "image": "7luck.png",  "label": "💀 Terrible",      "msg": "Don't even try today ☠️"},
+    {"min": 11, "max": 20,  "image": "14luck.png", "label": "😭 Very Bad",       "msg": "Just survive the day 💀"},
+    {"min": 21, "max": 30,  "image": "26luck.png", "label": "😕 Bad",            "msg": "Not looking great 😕"},
+    {"min": 31, "max": 40,  "image": "38luck.png", "label": "😐 Low",            "msg": "Could be worse 😐"},
+    {"min": 41, "max": 50,  "image": "47luck.png", "label": "🤷 Meh",            "msg": "Don't expect miracles 🤷‍♂️"},
+    {"min": 51, "max": 60,  "image": "55luck.png", "label": "🙂 Slightly Good",  "msg": "Not bad actually 🙂"},
+    {"min": 61, "max": 70,  "image": "67luck.png", "label": "😎 Good",           "msg": "Things are lowkey working out 😎"},
+    {"min": 71, "max": 80,  "image": "74luck.png", "label": "✨ Very Good",      "msg": "Things going your way ✨"},
+    {"min": 81, "max": 90,  "image": "88luck.png", "label": "🔥 Lucky",          "msg": "Go take risks 🔥"},
+    {"min": 91, "max": 100, "image": "96luck.png", "label": "👑 OP Luck",        "msg": "Main character day 👑"},
+]
+
+def get_luck_range(percent):
+    for r in LUCK_RANGES:
+        if r["min"] <= percent <= r["max"]:
+            return r
+    return LUCK_RANGES[-1]
 
 # --- Boredom Suggestions ---
 BOREDOM_SUGGESTIONS = [
@@ -75,6 +98,9 @@ def get_username(user):
     if user.username:
         return f"@{user.username}"
     return user.first_name
+
+def today_str():
+    return datetime.utcnow().strftime("%Y-%m-%d")
 
 # --- /couple command ---
 @bot.message_handler(commands=['couple'])
@@ -180,6 +206,36 @@ def handle_gettingbored(message):
         message.chat.id,
         f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}"
     )
+
+# --- /luck command ---
+@bot.message_handler(commands=['luck'])
+def handle_luck(message):
+    if message.chat.type not in ['group', 'supergroup']:
+        bot.reply_to(message, "❌ This command only works in group chats!")
+        return
+
+    user_id = str(message.from_user.id)
+    username = get_username(message.from_user)
+    today = today_str()
+
+    # Check if user already has luck for today
+    if user_id in luck_history and luck_history[user_id]["date"] == today:
+        percent = luck_history[user_id]["percent"]
+    else:
+        # Generate new luck for today
+        percent = random.randint(0, 100)
+        luck_history[user_id] = {"percent": percent, "date": today}
+        save_data()
+
+    luck = get_luck_range(percent)
+    image_url = f"{get_base()}/{luck['image']}"
+
+    caption = (
+        f"🍀 Luck Check for {username}\n\n"
+        f"Your luck today: {percent}% — {luck['msg']}"
+    )
+
+    bot.send_photo(message.chat.id, image_url, caption=caption)
 
 # --- Track every message ---
 @bot.message_handler(func=lambda message: True)
