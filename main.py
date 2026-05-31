@@ -253,6 +253,13 @@ EXPOSE_MESSAGES = [
     "Says 'I don't watch reels'… knows every trending reel 📱🤡",
     "Tells others to stay calm… panics first 😶‍🌫️",
     "Says 'I love mornings'… hasn't seen 8AM voluntarily 🌅😭",
+    "Thinks of jokes later and wishes they said it 😭",
+    "Watches others do work… feels tired themselves 😭",
+    "Goes to study… cleans everything except studying 📚🧹",
+    "Says 'I'll just rest for 5 minutes'… wakes up 2 hours later ⏳💀",
+    "Says 'I'm not hungry' then eats half the kitchen 🍜😶",
+    "Says 'I'll remember this'… forgets in 2 minutes 🤡",
+    "Says 'just one more video'… loses 1 hour 🎥😶",
 ]
 
 # --- /expose command ---
