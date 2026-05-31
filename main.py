@@ -174,6 +174,7 @@ def handle_breakup(message):
         return
 
     sender = get_username(message.from_user)
+    chat_id = message.chat.id
     parts = message.text.split()
 
     if len(parts) < 2:
@@ -184,14 +185,24 @@ def handle_breakup(message):
     if not target.startswith("@"):
         target = f"@{target}"
 
+    # Check if sender used /breakup on their own partner
+    if chat_id in couple_history:
+        data = couple_history[chat_id]
+        u1, u2 = data['couple']
+        # If sender is u1 and target is u2, or sender is u2 and target is u1
+        if (sender == u1 and target == u2) or (sender == u2 and target == u1):
+            del couple_history[chat_id]
+            save_data()
+            print(f"Couple cleared — {sender} broke up with {target}")
+
     breakup_image = f"{get_base()}/breakup.png"
     caption = (
         f"💔 Great decision {sender}! You deserved better!\n\n"
         f"{target} lost the 💎"
     )
 
-    bot.send_photo(message.chat.id, breakup_image, caption=caption)
-
+    bot.send_photo(chat_id, breakup_image, caption=caption)
+    
 # --- /gettingbored command ---
 @bot.message_handler(commands=['gettingbored'])
 def handle_gettingbored(message):
