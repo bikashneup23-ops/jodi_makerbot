@@ -280,7 +280,7 @@ def handle_expose(message):
 
     # Prevent self-expose
     sender = get_username(message.from_user)
-    if target == sender:
+    if target.lower() == sender.lower():
         bot.reply_to(message, "❌ You can't expose yourself! Try someone else 😏")
         return
     expose_msg = random.choice(EXPOSE_MESSAGES)
