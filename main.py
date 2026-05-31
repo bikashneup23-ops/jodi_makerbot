@@ -217,6 +217,53 @@ def handle_gettingbored(message):
         message.chat.id,
         f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}"
     )
+# --- Expose Messages ---
+EXPOSE_MESSAGES = [
+    "Still sleeps with a night light 💀",
+    "Laughs at their own jokes alone at 3AM 😭",
+    "Googles 'how to be cool' every night 🤡",
+    "Has a folder of memes they never send to anyone 🗂️",
+    "Practices conversations in the mirror before texting 📱",
+    "Cries watching cartoon movies 🧸😭",
+    "Eats Maggi at midnight and calls it dinner 🍜",
+    "Still uses the same password from 2015 🔐😬",
+    "Talks to their pet like it understands everything 🐱👀",
+    "Screenshots their own messages to check if they sound cool 📸",
+    "Pretends to be busy but is just scrolling reels 📱😶",
+    "Has a playlist called 'sad hours' they use daily 🎧💔",
+    "Rehearses arguments in the shower that never happen 🚿💀",
+    "Types and deletes messages 10 times before sending 😭",
+    "Secretly watches cooking videos but can't cook anything 👨‍🍳💀",
+    "Has notifications off for everyone except their crush 🔔❤️",
+    "Sends 'haha' but is completely dead inside 💀",
+    "Keeps refreshing apps like something new will happen 🔄😶",
+    "Joins group chat, reads everything, says nothing 👀🤐",
+    "Says 'I'll sleep early' and ends up online till 2AM 🌙💀",
+    "Changes bio hoping someone notices 📝😏",
+]
+
+# --- /expose command ---
+@bot.message_handler(commands=['expose'])
+def handle_expose(message):
+    if message.chat.type not in ['group', 'supergroup']:
+        bot.reply_to(message, "❌ This command only works in group chats!")
+        return
+
+    parts = message.text.split()
+    if len(parts) < 2:
+        bot.reply_to(message, "❌ Usage: /expose @username")
+        return
+
+    target = parts[1]
+    if not target.startswith("@"):
+        target = f"@{target}"
+
+    expose_msg = random.choice(EXPOSE_MESSAGES)
+
+    bot.send_message(
+        message.chat.id,
+        f"🔍 Exposed! {target}\n\n{expose_msg}"
+    )
 
 # --- /luck command ---
 @bot.message_handler(commands=['luck'])
