@@ -278,6 +278,11 @@ def handle_expose(message):
     if not target.startswith("@"):
         target = f"@{target}"
 
+    # Prevent self-expose
+    sender = get_username(message.from_user)
+    if target == sender:
+        bot.reply_to(message, "❌ You can't expose yourself! Try someone else 😏")
+        return
     expose_msg = random.choice(EXPOSE_MESSAGES)
 
     bot.send_message(
