@@ -240,6 +240,19 @@ EXPOSE_MESSAGES = [
     "Joins group chat, reads everything, says nothing 👀🤐",
     "Says 'I'll sleep early' and ends up online till 2AM 🌙💀",
     "Changes bio hoping someone notices 📝😏",
+    "Opens camera to check face… takes 10 selfies anyway 📸😏",
+    "Searches meanings of words mid-conversation 🤓📲",
+    "Watches tutorials at 2x speed… understands nothing 🎥💀",
+    "Watches horror videos… then can't sleep alone 🌙😨",
+    "Watches travel vlogs… never leaves their room ✈️🛌",
+    "Acts fearless… scared to send one message 😶",
+    "Gives gym advice… hasn't touched dumbbells 💪🤡",
+    "Gives relationship advice… has zero experience 😭",
+    "Tells people to move on… can't move on themselves 😭",
+    "Motivates everyone else… has zero motivation themselves 😶",
+    "Says 'I don't watch reels'… knows every trending reel 📱🤡",
+    "Tells others to stay calm… panics first 😶‍🌫️",
+    "Says 'I love mornings'… hasn't seen 8AM voluntarily 🌅😭",
 ]
 
 # --- /expose command ---
