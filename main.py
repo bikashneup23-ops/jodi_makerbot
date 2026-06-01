@@ -43,6 +43,7 @@ def save_data():
 
 # --- Load existing data on startup ---
 group_members, couple_history, luck_history = load_data()
+used_expose = {}  # {chat_id: [used indexes]}
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
 # --- Image URLs ---
@@ -230,8 +231,6 @@ EXPOSE_MESSAGES = [
     "Talks to their pet like it understands everything 🐱👀",
     "Screenshots their own messages to check if they sound cool 📸",
     "Pretends to be busy but is just scrolling reels 📱😶",
-    "Has a playlist called 'sad hours' they use daily 🎧💔",
-    "Rehearses arguments in the shower that never happen 🚿💀",
     "Types and deletes messages 10 times before sending 😭",
     "Secretly watches cooking videos but can't cook anything 👨‍🍳💀",
     "Has notifications off for everyone except their crush 🔔❤️",
@@ -239,7 +238,6 @@ EXPOSE_MESSAGES = [
     "Keeps refreshing apps like something new will happen 🔄😶",
     "Joins group chat, reads everything, says nothing 👀🤐",
     "Says 'I'll sleep early' and ends up online till 2AM 🌙💀",
-    "Changes bio hoping someone notices 📝😏",
     "Opens camera to check face… takes 10 selfies anyway 📸😏",
     "Searches meanings of words mid-conversation 🤓📲",
     "Watches tutorials at 2x speed… understands nothing 🎥💀",
@@ -260,8 +258,17 @@ EXPOSE_MESSAGES = [
     "Says 'I'm not hungry' then eats half the kitchen 🍜😶",
     "Says 'I'll remember this'… forgets in 2 minutes 🤡",
     "Says 'just one more video'… loses 1 hour 🎥😶",
+    "Is secretly double dating and mixing up names 💀",
+    "Has a 'best friend' in every group 🤡",
+    "Replies late on purpose to seem busy 😏",
+    "Acts single… isn't single 😭",
+    "Says 'just a friend' every time 👀",
+    "Has different personalities for different people 🎭",
+    "Says 'I'm offline'… online somewhere else 👀",
+    "Has a 'favorite person'… changes every week 🤡",
+    "Says 'I hate drama'… always knows the full story 👀",
+    "Acts busy but replies instantly to one specific person 📱😏",
 ]
-
 # --- /expose command ---
 @bot.message_handler(commands=['expose'])
 def handle_expose(message):
@@ -283,13 +290,24 @@ def handle_expose(message):
     if target.lower() == sender.lower():
         bot.reply_to(message, "❌ You can't expose yourself! Try someone else 😏")
         return
-    expose_msg = random.choice(EXPOSE_MESSAGES)
+
+    chat_id = str(message.chat.id)
+
+    # Reset if all messages used
+    if chat_id not in used_expose or len(used_expose[chat_id]) >= len(EXPOSE_MESSAGES):
+        used_expose[chat_id] = []
+
+    # Pick random unused message
+    all_indexes = list(range(len(EXPOSE_MESSAGES)))
+    remaining = [i for i in all_indexes if i not in used_expose[chat_id]]
+    chosen_index = random.choice(remaining)
+    used_expose[chat_id].append(chosen_index)
+    expose_msg = EXPOSE_MESSAGES[chosen_index]
 
     bot.send_message(
         message.chat.id,
         f"🔍 Exposed! {target}\n\n{expose_msg}"
     )
-
 # --- /luck command ---
 @bot.message_handler(commands=['luck'])
 def handle_luck(message):
