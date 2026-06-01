@@ -218,6 +218,25 @@ def handle_gettingbored(message):
         message.chat.id,
         f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}"
     )
+ # --- /mygroups command (owner only) ---
+OWNER_ID = 1245270119
+
+@bot.message_handler(commands=['mygroups'])
+def handle_mygroups(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        return
+
+    if not group_members:
+        bot.reply_to(message, "No groups found!")
+        return
+
+    text = "📋 Groups where bot is active:\n\n"
+    for i, (chat_id, members) in enumerate(group_members.items(), 1):
+        text += f"{i}. Chat ID: `{chat_id}` — {len(members)} members\n"
+
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')   
+    
 # --- Expose Messages ---
 EXPOSE_MESSAGES = [
     "Still sleeps with a night light 💀",
