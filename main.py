@@ -319,7 +319,17 @@ def handle_luck(message):
     )
 
     bot.send_photo(message.chat.id, image_url, caption=caption)
-
+# --- Handle member leaving ---
+@bot.message_handler(content_types=['left_chat_member'])
+def handle_left_member(message):
+    chat_id = message.chat.id
+    left_user = message.left_chat_member
+    user_id = left_user.id
+    if chat_id in group_members and user_id in group_members[chat_id]:
+        del group_members[chat_id][user_id]
+        save_data()
+        print(f"Removed {left_user.first_name} from chat {chat_id}")
+        
 # --- Track every message ---
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
