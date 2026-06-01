@@ -25,10 +25,11 @@ def load_data():
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
                 return (
-                    {int(k): v for k, v in data.get("members", {}).items()},
-                    {int(k): v for k, v in data.get("couples", {}).items()},
-                    data.get("luck", {})
-                )
+    {int(k): v for k, v in data.get("members", {}).items()},
+    {int(k): v for k, v in data.get("couples", {}).items()},
+    data.get("luck", {}),
+    {int(k): v for k, v in data.get("group_names", {}).items()}
+         )
         except:
             pass
     return {}, {}, {}
@@ -38,13 +39,13 @@ def save_data():
         json.dump({
             "members": {str(k): v for k, v in group_members.items()},
             "couples": {str(k): v for k, v in couple_history.items()},
-            "luck": luck_history
+            "luck": luck_history,
+            "group_names": {str(k): v for k, v in group_names.items()}
         }, f)
 
 # --- Load existing data on startup ---
-group_members, couple_history, luck_history = load_data()
-used_expose = {}  # {chat_id: [used indexes]}
-group_names = {}
+group_members, couple_history, luck_history, group_names = load_data()
+used_expose = {}
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
 # --- Image URLs ---
