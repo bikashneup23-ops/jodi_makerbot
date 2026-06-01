@@ -44,6 +44,7 @@ def save_data():
 # --- Load existing data on startup ---
 group_members, couple_history, luck_history = load_data()
 used_expose = {}  # {chat_id: [used indexes]}
+group_names = {}
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
 # --- Image URLs ---
@@ -233,7 +234,8 @@ def handle_mygroups(message):
 
     text = "📋 Groups where bot is active:\n\n"
     for i, (chat_id, members) in enumerate(group_members.items(), 1):
-        text += f"{i}. Chat ID: `{chat_id}` — {len(members)} members\n"
+        name = group_names.get(chat_id, "Unknown Group")
+        text += f"{i}. {name} — {len(members)} members\n"
 
     bot.send_message(message.chat.id, text, parse_mode='Markdown')   
     
@@ -380,6 +382,9 @@ def track_members(message):
     if chat_id not in group_members:
         group_members[chat_id] = {}
     group_members[chat_id][user_id] = user_name
+    # Store group name
+    if message.chat.title:
+        group_names[chat_id] = message.chat.title
     save_data()
 
 # --- Webhook route ---
