@@ -29,10 +29,10 @@ def load_data():
     {int(k): v for k, v in data.get("couples", {}).items()},
     data.get("luck", {}),
     {int(k): v for k, v in data.get("group_names", {}).items()}
-         )
+                )
         except:
             pass
-    return {}, {}, {}
+    return {}, {}, {}, {}
 
 def save_data():
     with open(DATA_FILE, "w") as f:
