@@ -104,7 +104,22 @@ def get_username(user):
 
 def today_str():
     return datetime.utcnow().strftime("%Y-%m-%d")
-
+# --- /start command ---
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    bot.send_message(
+        message.chat.id,
+        "👋 Hey! I'm *Jodi Maker Bot* 💘\n\n"
+        "Your group's ultimate fun companion!\n\n"
+        "Here's what I can do:\n\n"
+        "💘 /couple — Pick couple of the hour with a dare\n"
+        "💔 /breakup @user — Send a breakup message\n"
+        "🍀 /luck — Check your daily luck score\n"
+        "🔍 /expose @user — Expose someone's secrets\n"
+        "😌 /gettingbored — Get a fun suggestion\n\n"
+        "➕ Add me to your group and let the fun begin!",
+        parse_mode='Markdown'
+    )
 # --- /couple command ---
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
