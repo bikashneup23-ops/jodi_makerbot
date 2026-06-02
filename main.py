@@ -247,11 +247,10 @@ def handle_mygroups(message):
     if not group_members:
         bot.reply_to(message, "No groups found!")
         return
-text = "📋 Groups where bot is active:\n\n"
+    text = "📋 Groups where bot is active:\n\n"
     for i, (chat_id, members) in enumerate(group_members.items(), 1):
         name = group_names.get(chat_id, "Unknown Group")
-        member_list = ", ".join(members.values()) if members else "No members"
-        text += f"{i}. {name} — {len(members)} members\n   👥 {member_list}\n\n"
+        text += f"{i}. {name} — {len(members)} members\n"
 
     bot.send_message(message.chat.id, text, parse_mode='Markdown')   
     
