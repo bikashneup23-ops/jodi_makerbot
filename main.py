@@ -247,11 +247,11 @@ def handle_mygroups(message):
     if not group_members:
         bot.reply_to(message, "No groups found!")
         return
-
-    text = "📋 Groups where bot is active:\n\n"
+text = "📋 Groups where bot is active:\n\n"
     for i, (chat_id, members) in enumerate(group_members.items(), 1):
         name = group_names.get(chat_id, "Unknown Group")
-        text += f"{i}. {name} — {len(members)} members\n"
+        member_list = ", ".join(members.values()) if members else "No members"
+        text += f"{i}. {name} — {len(members)} members\n   👥 {member_list}\n\n"
 
     bot.send_message(message.chat.id, text, parse_mode='Markdown')   
     
@@ -284,6 +284,26 @@ EXPOSE_MESSAGES = [
     "Gives gym advice… hasn't touched dumbbells 💪🤡",
     "Gives relationship advice… has zero experience 😭",
     "Tells people to move on… can't move on themselves 😭",
+    "Acts busy but replies instantly to one specific person 📱😏",
+    "Opens a door that says 'pull' and pushes anyway 🚪🤡",
+    "Farts in public and acts like there's no smell at all 💀",
+    "Talks to themselves and wins arguments 🧠🏆",
+    "Walks faster when someone is behind them for no reason 🚶‍♂️💀",
+    "Looks at phone to avoid eye contact 📱😶",
+    "Thinks of fake scenarios and gets emotionally involved 🤡",
+    "Checks time… forgets immediately ⏰😶",
+    "Hears a sound… investigates like a detective 🕵️‍♂️💀",
+    "Walks into mirror and gets scared of themselves 🪞😨",
+    "Acts like a sports expert online… doesn't even know the basic rules 💀",
+    "Acts like a night owl… sleeps by 11 🌙😏",
+    "Thinks they're the main character… but not even a side role in reality 🎬💀",
+    "Says 'I don't need anyone'… needs attention 😏",
+    "Double dating and still looking for another one 💀",
+    "Gets scared of their own shadow sometimes 🤡",
+    "Behaves sigma on social media… chhapri in real life 🤡",
+    "Acts rich online… gets heartattack even at normal price in real life 💀",
+    "Acts like a movieholic… sleeps halfway through 🎬😬",
+    "Still gets Pant wet while watching Bhoothnath movie 🤡",
     "Motivates everyone else… has zero motivation themselves 😶",
     "Says 'I don't watch reels'… knows every trending reel 📱🤡",
     "Tells others to stay calm… panics first 😶‍🌫️",
@@ -304,7 +324,6 @@ EXPOSE_MESSAGES = [
     "Says 'I'm offline'… online somewhere else 👀",
     "Has a 'favorite person'… changes every week 🤡",
     "Says 'I hate drama'… always knows the full story 👀",
-    "Acts busy but replies instantly to one specific person 📱😏",
 ]
 # --- /expose command ---
 @bot.message_handler(commands=['expose'])
