@@ -27,26 +27,28 @@ def load_data():
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
                 return (
-                    {int(k): v for k, v in data.get("members", {}).items()},
-                    {int(k): v for k, v in data.get("couples", {}).items()},
-                    data.get("luck", {}),
-                    {int(k): v for k, v in data.get("group_names", {}).items()}
-                )
+    {int(k): v for k, v in data.get("members", {}).items()},
+    {int(k): v for k, v in data.get("couples", {}).items()},
+    data.get("luck", {}),
+    {int(k): v for k, v in data.get("group_names", {}).items()},
+    data.get("command_stats", {})
+)
         except:
             pass
-    return {}, {}, {}, {}
-
+    return {}, {}, {}, {}, {}
+    
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump({
             "members": {str(k): v for k, v in group_members.items()},
             "couples": {str(k): v for k, v in couple_history.items()},
             "luck": luck_history,
-            "group_names": {str(k): v for k, v in group_names.items()}
+            "group_names": {str(k): v for k, v in group_names.items()},
+            "command_stats": command_stats
         }, f)
 
 # --- Load existing data on startup ---
-group_members, couple_history, luck_history, group_names = load_data()
+group_members, couple_history, luck_history, group_names, command_stats = load_data()
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
 
 # --- Football Game State ---
@@ -216,7 +218,11 @@ OWNER_ID = 1245270119
 
 # --- Used expose tracker ---
 used_expose = {}
-
+# --- Track command usage ---
+def track_command(cmd):
+    command_stats[cmd] = command_stats.get(cmd, 0) + 1
+    save_data()
+    
 # ============================================================
 # FOOTBALL GAME FUNCTIONS
 # ============================================================
@@ -529,6 +535,7 @@ def handle_couple(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
+    track_command("couple")
 
     chat_id = message.chat.id
     current_time = time.time()
@@ -585,6 +592,7 @@ def handle_breakup(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
+    track_command("breakup")
 
     sender = get_username(message.from_user)
     chat_id = message.chat.id
@@ -618,6 +626,7 @@ def handle_gettingbored(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
+    track_command("gettingbored")
 
     sender = get_username(message.from_user)
     suggestion = random.choice(BOREDOM_SUGGESTIONS)
@@ -646,6 +655,29 @@ def handle_mygroups(message):
             bot.send_message(message.chat.id, text[i:i+4000])
     else:
         bot.send_message(message.chat.id, text)
+
+# --- /stats command ---
+@bot.message_handler(commands=['stats'])
+def handle_stats(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        return
+
+    if not command_stats:
+        bot.reply_to(message, "No stats yet!")
+        return
+
+    # Sort by most used
+    sorted_stats = sorted(command_stats.items(), key=lambda x: x[1], reverse=True)
+
+    text = "📊 Bot Command Stats\n\n"
+    for cmd, count in sorted_stats:
+        text += f"/{cmd} — {count} uses\n"
+
+    total = sum(command_stats.values())
+    text += f"\n🔢 Total commands used: {total}"
+
+    bot.send_message(message.chat.id, text)
 
 # --- /broadcast command ---
 @bot.message_handler(commands=['broadcast'])
@@ -684,6 +716,7 @@ def handle_luck(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
+    track_command("luck")
 
     user_id = str(message.from_user.id)
     username = get_username(message.from_user)
@@ -710,6 +743,7 @@ def handle_expose(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
+    track_command("expose")
 
     parts = message.text.split()
     if len(parts) < 2:
@@ -743,6 +777,7 @@ def handle_football(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
+    track_command("football")
 
     chat_id = message.chat.id
 
