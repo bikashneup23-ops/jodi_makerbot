@@ -439,34 +439,43 @@ def advance_tournament(chat_id):
     winners = game["tournament_winners"]
 
     if len(players) == 2:
-        loser = p2 if winners[0]["id"] == players[0]["id"] else players[0]
-        loser = players[1] if winners[0]["id"] == players[0]["id"] else players[1]
+        # Only 1 match, winner is winners[0], loser is the other player
+        loser = players[1] if winners[0]["id"] == players[0]["id"] else players[0]
         announce_champion(chat_id, winners[0], loser)
 
     elif len(players) == 3:
         if len(winners) == 1:
             played_ids = {game["matches"][0]["p1"]["id"], game["matches"][0]["p2"]["id"]}
             third = next(p for p in players if p["id"] not in played_ids)
+            # Store final match in matches list
+            final_match = create_match(winners[0], third)
+            game["matches"].append(final_match)
             bot.send_message(chat_id, f"🏟️ FINAL!\n{winners[0]['name']} vs {third['name']}\nGet ready! ⚽")
             time.sleep(2)
-            start_match(chat_id, winners[0], third)
-        else:
-            semi_ids = {game["matches"][0]["p1"]["id"], game["matches"][0]["p2"]["id"]}
-            loser = next(p for p in players if p["id"] in semi_ids and p["id"] != winners[1]["id"])
-            announce_champion(chat_id, winners[1], loser)
+            game["current_match"] = final_match
+            final_match["state"] = "collecting"
+            bot.send_message(chat_id, f"🔄 Round 1 — {winners[0]['name']} shoots first!")
+            send_shot_choices(final_match, chat_id)
+        elif len(winners) == 2:
+            final_match = game["matches"][1]
+            final_ids = {final_match["p1"]["id"], final_match["p2"]["id"]}
+            runner_up = next(p for p in players if p["id"] in final_ids and p["id"] != winners[1]["id"])
+            announce_champion(chat_id, winners[1], runner_up)
 
     elif len(players) == 4:
         if len(winners) == 1:
+            # Semi-final 1 done, play semi-final 2
             bot.send_message(chat_id, f"⚽ Semi-Final 2!\n{game['matches'][1]['p1']['name']} vs {game['matches'][1]['p2']['name']}\nGet ready!")
             time.sleep(2)
             start_match(chat_id, game["matches"][1]["p1"], game["matches"][1]["p2"])
         elif len(winners) == 2:
+            # Both semis done, play the grand final
             bot.send_message(chat_id, f"🏆 GRAND FINAL!\n{winners[0]['name']} vs {winners[1]['name']}\nGet ready! ⚽")
             time.sleep(2)
             start_match(chat_id, winners[0], winners[1])
         elif len(winners) == 3:
-            runner = winners[0] if winners[1]["id"] == winners[2]["id"] else winners[1]
-            announce_champion(chat_id, winners[2], runner)
+            # Grand final done — winners[2] is champion, winners[1] is runner-up
+            announce_champion(chat_id, winners[2], winners[1])
 
 def start_match(chat_id, p1, p2):
     game = get_game(chat_id)
@@ -496,6 +505,9 @@ def cancel_game(chat_id):
 # --- /start command ---
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    owner_extra = ""
+    if message.from_user.id == OWNER_ID:
+        owner_extra = "\n\n🛠️ *Owner Commands:*\n📢 /broadcast — Send announcement to all groups\n📋 /mygroups — List all active groups"
     bot.send_message(
         message.chat.id,
         "👋 Hey! I'm *Hourlyship Bot* 💘\n\n"
@@ -506,7 +518,7 @@ def handle_start(message):
         "🍀 /luck — Check your daily luck score\n"
         "🔍 /expose @user — Expose someone's secrets\n"
         "😌 /gettingbored — Get a fun suggestion\n"
-        "⚽ /football — Start a penalty shootout tournament\n\n"
+        f"⚽ /football — Start a penalty shootout tournament{owner_extra}\n\n"
         "➕ Add me to your group and let the fun begin!",
         parse_mode='Markdown'
     )
@@ -628,7 +640,43 @@ def handle_mygroups(message):
         member_list = ", ".join(members.values()) if members else "No members"
         text += f"{i}. {name} — {len(members)} members\n   👥 {member_list}\n\n"
 
-    bot.send_message(message.chat.id, text)
+    # Split if too long
+    if len(text) > 4000:
+        for i in range(0, len(text), 4000):
+            bot.send_message(message.chat.id, text[i:i+4000])
+    else:
+        bot.send_message(message.chat.id, text)
+
+# --- /broadcast command ---
+@bot.message_handler(commands=['broadcast'])
+def handle_broadcast(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        return
+
+    if not group_members:
+        bot.reply_to(message, "❌ No active groups found!")
+        return
+
+    # Get message after /broadcast
+    parts = message.text.split(None, 1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.reply_to(message, "❌ Usage: /broadcast your message here")
+        return
+
+    broadcast_text = f"📢 Announcement:\n\n{parts[1].strip()}"
+
+    success = 0
+    failed = 0
+    for chat_id in list(group_members.keys()):
+        try:
+            bot.send_message(chat_id, broadcast_text)
+            success += 1
+        except Exception as e:
+            print(f"Failed to send to {chat_id}: {e}")
+            failed += 1
+
+    bot.reply_to(message, f"✅ Broadcast done!\n\n📤 Sent: {success} groups\n❌ Failed: {failed} groups")
 
 # --- /luck command ---
 @bot.message_handler(commands=['luck'])
