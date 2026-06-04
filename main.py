@@ -218,6 +218,9 @@ OWNER_ID = 1245270119
 
 # --- Used expose tracker ---
 used_expose = {}
+# --- Horoscope cache ---
+horoscope_cache = {}  # {user_id: {"sign": sign, "date": date, "text": text}}
+
 # --- Track command usage ---
 def track_command(cmd):
     command_stats[cmd] = command_stats.get(cmd, 0) + 1
@@ -631,6 +634,43 @@ def handle_gettingbored(message):
     sender = get_username(message.from_user)
     suggestion = random.choice(BOREDOM_SUGGESTIONS)
     bot.send_message(message.chat.id, f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}")
+    
+# --- /horoscope command ---
+@bot.message_handler(commands=['horoscope'])
+def handle_horoscope(message):
+    if message.chat.type not in ['group', 'supergroup']:
+        bot.reply_to(message, "❌ This command only works in group chats!")
+        return
+
+    track_command("horoscope")
+
+    markup = types.InlineKeyboardMarkup()
+    markup.row(
+        types.InlineKeyboardButton("♈ Aries", callback_data=f"horo_{message.from_user.id}_aries"),
+        types.InlineKeyboardButton("♉ Taurus", callback_data=f"horo_{message.from_user.id}_taurus"),
+        types.InlineKeyboardButton("♊ Gemini", callback_data=f"horo_{message.from_user.id}_gemini")
+    )
+    markup.row(
+        types.InlineKeyboardButton("♋ Cancer", callback_data=f"horo_{message.from_user.id}_cancer"),
+        types.InlineKeyboardButton("♌ Leo", callback_data=f"horo_{message.from_user.id}_leo"),
+        types.InlineKeyboardButton("♍ Virgo", callback_data=f"horo_{message.from_user.id}_virgo")
+    )
+    markup.row(
+        types.InlineKeyboardButton("♎ Libra", callback_data=f"horo_{message.from_user.id}_libra"),
+        types.InlineKeyboardButton("♏ Scorpio", callback_data=f"horo_{message.from_user.id}_scorpio"),
+        types.InlineKeyboardButton("♐ Sagittarius", callback_data=f"horo_{message.from_user.id}_sagittarius")
+    )
+    markup.row(
+        types.InlineKeyboardButton("♑ Capricorn", callback_data=f"horo_{message.from_user.id}_capricorn"),
+        types.InlineKeyboardButton("♒ Aquarius", callback_data=f"horo_{message.from_user.id}_aquarius"),
+        types.InlineKeyboardButton("♓ Pisces", callback_data=f"horo_{message.from_user.id}_pisces")
+    )
+
+    bot.send_message(
+        message.chat.id,
+        f"🔮 {get_username(message.from_user)}, choose your zodiac sign:",
+        reply_markup=markup
+    )
 
 # --- /mygroups command ---
 @bot.message_handler(commands=['mygroups'])
@@ -948,6 +988,68 @@ def handle_callback(call):
         defender = get_defender(match)
         if defender["id"] in match["choices"]:
             process_round(chat_id)
+    elif data.startswith("horo_"):
+        parts = data.split("_")
+        user_id = int(parts[1])
+        sign = parts[2]
+        today = today_str()
+
+        # Only the person who requested can click
+        if call.from_user.id != user_id:
+            bot.answer_callback_query(call.id, "❌ This is not your horoscope request!")
+            return
+
+        bot.answer_callback_query(call.id, f"Fetching {sign.capitalize()} horoscope...")
+
+        # Check cache
+        cache_key = str(user_id)
+        if cache_key in horoscope_cache and horoscope_cache[cache_key]["date"] == today and horoscope_cache[cache_key]["sign"] == sign:
+            horoscope_text = horoscope_cache[cache_key]["text"]
+        else:
+            # Fetch from API
+            try:
+                response = requests.post(
+                    f"https://aztro.sameerkumar.website/?sign={sign}&day=today",
+                    timeout=10
+                )
+                data_json = response.json()
+                horoscope_text = (
+                    f"📅 Date: {data_json.get('current_date', today)}\n"
+                    f"🔮 {data_json.get('description', 'No horoscope available')}\n\n"
+                    f"❤️ Compatibility: {data_json.get('compatibility', 'N/A')}\n"
+                    f"🍀 Lucky Number: {data_json.get('lucky_number', 'N/A')}\n"
+                    f"🎨 Lucky Color: {data_json.get('lucky_color', 'N/A')}\n"
+                    f"😊 Mood: {data_json.get('mood', 'N/A')}"
+                )
+                # Cache it
+                horoscope_cache[cache_key] = {
+                    "sign": sign,
+                    "date": today,
+                    "text": horoscope_text
+                }
+            except Exception as e:
+                print(f"Horoscope API error: {e}")
+                bot.send_message(call.message.chat.id, "❌ Could not fetch horoscope right now. Try again later!")
+                return
+
+        username = get_username(call.from_user)
+        sign_emojis = {
+            "aries": "♈", "taurus": "♉", "gemini": "♊", "cancer": "♋",
+            "leo": "♌", "virgo": "♍", "libra": "♎", "scorpio": "♏",
+            "sagittarius": "♐", "capricorn": "♑", "aquarius": "♒", "pisces": "♓"
+        }
+        emoji = sign_emojis.get(sign, "🔮")
+
+        bot.send_message(
+            call.message.chat.id,
+            f"{emoji} {sign.capitalize()} Horoscope for {username}\n\n{horoscope_text}"
+        )
+
+        # Remove the sign selection buttons
+        try:
+            bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
+        except:
+            pass
 
     elif data.startswith("dive_"):
         parts = data.split("_")
