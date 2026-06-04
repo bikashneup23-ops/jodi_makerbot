@@ -1013,11 +1013,22 @@ def handle_callback(call):
                     timeout=10
                 )
                 data_json = response.json()
+                print(f"Horoscope raw response: {data_json}")  # DEBUG
                 horoscope_data = data_json.get("data", {})
-                horoscope_text = (
-                    f"📅 Date: {horoscope_data.get('date', today)}\n\n"
-                    f"🔮 {horoscope_data.get('horoscope_data', 'No horoscope available')}"
-                )
+                
+                if isinstance(horoscope_data, str):
+                    horoscope_text = f"🔮 {horoscope_data}"
+                elif isinstance(horoscope_data, dict):
+                    reading = (
+                        horoscope_data.get("horoscope_data") or
+                        horoscope_data.get("description") or
+                        horoscope_data.get("horoscope") or
+                        "No horoscope available"
+                    )
+                    date_str = horoscope_data.get("date", today)
+                    horoscope_text = f"📅 Date: {date_str}\n\n🔮 {reading}"
+                else:
+                    horoscope_text = "❌ Unexpected API response format."
                 # Cache it
                 horoscope_cache[cache_key] = {
                     "sign": sign,
