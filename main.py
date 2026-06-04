@@ -1008,18 +1008,15 @@ def handle_callback(call):
         else:
             # Fetch from API
             try:
-                response = requests.post(
-                    f"https://aztro.sameerkumar.website/?sign={sign}&day=today",
+                response = requests.get(
+                    f"https://horoscope-app-api.vercel.app/api/v1/get-horoscope/daily?sign={sign}&day=today",
                     timeout=10
                 )
                 data_json = response.json()
+                horoscope_data = data_json.get("data", {})
                 horoscope_text = (
-                    f"📅 Date: {data_json.get('current_date', today)}\n"
-                    f"🔮 {data_json.get('description', 'No horoscope available')}\n\n"
-                    f"❤️ Compatibility: {data_json.get('compatibility', 'N/A')}\n"
-                    f"🍀 Lucky Number: {data_json.get('lucky_number', 'N/A')}\n"
-                    f"🎨 Lucky Color: {data_json.get('lucky_color', 'N/A')}\n"
-                    f"😊 Mood: {data_json.get('mood', 'N/A')}"
+                    f"📅 Date: {horoscope_data.get('date', today)}\n\n"
+                    f"🔮 {horoscope_data.get('horoscope_data', 'No horoscope available')}"
                 )
                 # Cache it
                 horoscope_cache[cache_key] = {
