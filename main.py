@@ -220,6 +220,8 @@ OWNER_ID = 1245270119
 used_expose = {}
 # --- Horoscope cache ---
 horoscope_cache = {}  # {user_id: {"sign": sign, "date": date, "text": text}}
+# --- Stream Link ---
+stream_data = {"link": "Not set yet. Ask the admin!"}
 
 # --- Track command usage ---
 def track_command(cmd):
@@ -749,6 +751,46 @@ def handle_broadcast(message):
             failed += 1
 
     bot.reply_to(message, f"✅ Broadcast done!\n\n📤 Sent: {success} groups\n❌ Failed: {failed} groups")
+# --- /setstream command (owner only) ---
+@bot.message_handler(commands=['setstream'])
+def handle_setstream(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        return
+
+    parts = message.text.split(None, 1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.reply_to(message, "❌ Usage: /setstream <your link here>")
+        return
+
+    stream_data["link"] = parts[1].strip()
+    bot.reply_to(message, f"✅ Stream link updated!\n\n🔗 {stream_data['link']}")
+
+# --- /stream command ---
+@bot.message_handler(commands=['stream'])
+def handle_stream(message):
+    track_command("stream")
+    link = stream_data["link"]
+    stream_msg = f"🎬 Stream Link\n\n🔗 {link}"
+
+    if message.chat.type in ['group', 'supergroup']:
+        # Tell them to check DM in group
+        bot.reply_to(message, "📩 Check your DM for the stream link!")
+        # Try to send DM
+        try:
+            bot.send_message(message.from_user.id, stream_msg)
+        except Exception as e:
+            # User hasn't started bot in DM
+            print(f"Could not DM {message.from_user.id}: {e}")
+            bot.reply_to(
+                message,
+                f"⚠️ {get_username(message.from_user)}, I couldn't send you a DM!\n"
+                f"Please start the bot first 👉 @{bot.get_me().username}\n"
+                f"Then send /stream again."
+            )
+    else:
+        # Private DM — send directly
+        bot.send_message(message.chat.id, stream_msg)
 
 # --- /luck command ---
 @bot.message_handler(commands=['luck'])
