@@ -771,14 +771,31 @@ def handle_setstream(message):
 def handle_stream(message):
     track_command("stream")
     link = stream_data["link"]
-    stream_msg = f"🎬 Stream Link\n\n🔗 {link}"
+    stream_msg = (
+        f"🎬 Stream Link\n\n"
+        f"🔗 {link}\n\n"
+        f"⚠️ This link will be deleted in 15 minutes!\n"
+        f"📌 Forward to Saved Messages to keep it."
+    )
 
     if message.chat.type in ['group', 'supergroup']:
         # Tell them to check DM in group
         bot.reply_to(message, "📩 Check your DM for the stream link!")
         # Try to send DM
         try:
-            bot.send_message(message.from_user.id, stream_msg)
+            sent = bot.send_message(message.from_user.id, stream_msg)
+            # Auto delete after 15 minutes
+            def delete_stream_msg(chat_id, msg_id):
+                time.sleep(900)  # 15 minutes
+                try:
+                    bot.delete_message(chat_id, msg_id)
+                except:
+                    pass
+            threading.Thread(
+                target=delete_stream_msg,
+                args=[message.from_user.id, sent.message_id],
+                daemon=True
+            ).start()
         except Exception as e:
             # User hasn't started bot in DM
             print(f"Could not DM {message.from_user.id}: {e}")
@@ -790,7 +807,18 @@ def handle_stream(message):
             )
     else:
         # Private DM — send directly
-        bot.send_message(message.chat.id, stream_msg)
+        sent = bot.send_message(message.chat.id, stream_msg)
+        def delete_stream_msg_dm(chat_id, msg_id):
+            time.sleep(900)
+            try:
+                bot.delete_message(chat_id, msg_id)
+            except:
+                pass
+        threading.Thread(
+            target=delete_stream_msg_dm,
+            args=[message.chat.id, sent.message_id],
+            daemon=True
+        ).start()
 
 # --- /luck command ---
 @bot.message_handler(commands=['luck'])
