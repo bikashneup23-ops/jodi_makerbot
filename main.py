@@ -86,6 +86,7 @@ def extract_tpead_link(url):
         }
         response = requests.get(url, headers=headers, timeout=15)
         html = response.text
+        print("HTML snippet:", html[html.find('norobotlink'):html.find('norobotlink')+300])
 
         # Extract the token from JS: document.getElementById('norobotlink').innerHTML = '//tpead.net/get_vide' + ('xcdo?id=...token=...').substring(1).substring(2)
         match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = '//tpead\.net/get_vide' \+ \('(.+?)'\)\.substring\(1\)\.substring\(2\)", html)
@@ -1208,42 +1209,32 @@ def handle_tpead_link(message):
     processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
 
     def process_and_send():
-        direct_url = extract_tpead_link(url)
-        if not direct_url:
-            bot.edit_message_text(
-                "❌ Could not extract video. The link may have expired or is invalid.",
-                message.chat.id,
-                processing_msg.message_id
-            )
-            return
+    direct_url = extract_tpead_link(url)
+    if not direct_url:
+        bot.edit_message_text(
+            "❌ Could not extract video. The link may have expired or is invalid.",
+            message.chat.id,
+            processing_msg.message_id
+        )
+        return
 
-        try:
-            bot.delete_message(message.chat.id, processing_msg.message_id)
-            sent = bot.send_video(
-                message.chat.id,
-                direct_url,
-                caption=(
-                    "🎬 Here's your video!\n\n"
-                    "⚠️ This will be deleted in 10 minutes!\n"
-                    "📥 Download it before it's gone!"
-                ),
-                supports_streaming=True
-            )
-
-            def delete_video():
-                time.sleep(600)
-                try:
-                    bot.delete_message(message.chat.id, sent.message_id)
-                except:
-                    pass
-
-            threading.Thread(target=delete_video, daemon=True).start()
-
-        except Exception as e:
-            print(f"Video send error: {e}")
-            bot.send_message(message.chat.id, "❌ Failed to send video. The link may have expired.")
-
-    threading.Thread(target=process_and_send, daemon=True).start()
+    try:
+        bot.delete_message(message.chat.id, processing_msg.message_id)
+        bot.send_message(
+            message.chat.id,
+            f"🎬 *Video Ready!*\n\n"
+            f"`{direct_url}`\n\n"
+            f"📌 *How to play:*\n"
+            f"*VLC:* Media → Open Network Stream → paste link\n"
+            f"*NS Player:* Add URL → paste link\n"
+            f"*MX Player:* Stream → paste link\n\n"
+            f"⚠️ *Link expires in ~24 hours*",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        print(f"Error sending URL: {e}")
+        bot.send_message(message.chat.id, "❌ Failed to process link. Try again.")
+        
 # --- Handle member leaving ---
 @bot.message_handler(content_types=['left_chat_member'])
 def handle_left_member(message):
