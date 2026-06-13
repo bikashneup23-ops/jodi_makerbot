@@ -1209,31 +1209,32 @@ def handle_tpead_link(message):
     processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
 
     def process_and_send():
-    direct_url = extract_tpead_link(url)    # ✅ no colon
-    if not direct_url:
-        bot.edit_message_text(
-            "❌ Could not extract video. The link may have expired or is invalid.",
-            message.chat.id,
-            processing_msg.message_id
-        )
-        return
+        direct_url = extract_tpead_link(url)
+        if not direct_url:
+            bot.edit_message_text(
+                "❌ Could not extract video. The link may have expired or is invalid.",
+                message.chat.id,
+                processing_msg.message_id
+            )
+            return
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+            bot.send_message(
+                message.chat.id,
+                f"🎬 *Video Ready!*\n\n"
+                f"`{direct_url}`\n\n"
+                f"📌 *How to play:*\n"
+                f"*VLC:* Media → Open Network Stream → paste link\n"
+                f"*NS Player:* Add URL → paste link\n"
+                f"*MX Player:* Stream → paste link\n\n"
+                f"⚠️ *Link expires in ~24 hours*",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"Error sending URL: {e}")
+            bot.send_message(message.chat.id, "❌ Failed to process link. Try again.")
 
-    try:
-        bot.delete_message(message.chat.id, processing_msg.message_id)
-        bot.send_message(
-            message.chat.id,
-            f"🎬 *Video Ready!*\n\n"
-            f"`{direct_url}`\n\n"
-            f"📌 *How to play:*\n"
-            f"*VLC:* Media → Open Network Stream → paste link\n"
-            f"*NS Player:* Add URL → paste link\n"
-            f"*MX Player:* Stream → paste link\n\n"
-            f"⚠️ *Link expires in ~24 hours*",
-            parse_mode='Markdown'
-        )
-    except Exception as e:
-        print(f"Error sending URL: {e}")
-        bot.send_message(message.chat.id, "❌ Failed to process link. Try again.")
+    threading.Thread(target=process_and_send, daemon=True).start()
         
 # --- Handle member leaving ---
 @bot.message_handler(content_types=['left_chat_member'])
