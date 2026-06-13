@@ -75,33 +75,38 @@ def get_save_image():
     base = get_base()
     return random.choice([f"{base}/save1.png", f"{base}/save2.png", f"{base}/save3.png"])
 
-# --- Extract Streamtape direct link ---
-def extract_streamtape_link(url):
+# --- Extract tpead.net direct link ---
+def extract_tpead_link(url):
     try:
         import re
-        from bs4 import BeautifulSoup
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://tpead.net/",
+            "Accept-Language": "en-US,en;q=0.9"
         }
         response = requests.get(url, headers=headers, timeout=15)
-        soup = BeautifulSoup(response.text, "html.parser")
-        
-        # Find the hidden div with video link
-        scripts = response.text
-        match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = (.+);", scripts)
+        html = response.text
+
+        # Extract the token from JS: document.getElementById('norobotlink').innerHTML = '//tpead.net/get_vide' + ('xcdo?id=...token=...').substring(1).substring(2)
+        match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = '//tpead\.net/get_vide' \+ \('(.+?)'\)\.substring\(1\)\.substring\(2\)", html)
         if match:
-            part1 = match.group(1)
-            match2 = re.search(r"\"(/streamtape[^\"]+)\"", scripts)
-            if match2:
-                token_part = match2.group(1)
-                # Combine to get final URL
-                full_url = "https://streamtape.to" + token_part
-                return full_url
+            suffix = match.group(1)[3:]  # remove first 3 chars (substring(1) then substring(2) = skip 3)
+            direct_url = "https://tpead.net/get_video" + suffix + "&stream=1"
+            return direct_url
+
+        # Fallback: grab directly from #norobotlink div content
+        match2 = re.search(r'id="norobotlink"[^>]*>([^<]+)<', html)
+        if match2:
+            path = match2.group(1).strip()
+            if path.startswith("//"):
+                path = "https:" + path
+            return path + "&stream=1"
+
         return None
     except Exception as e:
-        print(f"Streamtape extract error: {e}")
+        print(f"tpead extract error: {e}")
         return None
-
+        
 # --- Luck Ranges ---
 LUCK_RANGES = [
     {"min": 0,  "max": 10,  "image": "7luck.png",  "msg": "Don't even try today ☠️"},
@@ -1194,15 +1199,19 @@ def handle_callback(call):
 @bot.message_handler(func=lambda message: message.chat.type == 'private' and 
                      message.text and 
                      'streamtape' in message.text.lower())
-def handle_streamtape_link(message):
+# --- Auto detect tpead links in DM ---
+@bot.message_handler(func=lambda message: message.chat.type == 'private' and
+                      message.text and
+                      'tpead' in message.text.lower())
+def handle_tpead_link(message):
     url = message.text.strip()
     processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
 
     def process_and_send():
-        direct_url = extract_streamtape_link(url)
+        direct_url = extract_tpead_link(url)
         if not direct_url:
             bot.edit_message_text(
-                "❌ Could not extract video. Check the link and try again.",
+                "❌ Could not extract video. The link may have expired or is invalid.",
                 message.chat.id,
                 processing_msg.message_id
             )
@@ -1221,7 +1230,6 @@ def handle_streamtape_link(message):
                 supports_streaming=True
             )
 
-            # Auto delete after 10 minutes
             def delete_video():
                 time.sleep(600)
                 try:
@@ -1233,10 +1241,9 @@ def handle_streamtape_link(message):
 
         except Exception as e:
             print(f"Video send error: {e}")
-            bot.send_message(message.chat.id, "❌ Failed to send video. Try again.")
+            bot.send_message(message.chat.id, "❌ Failed to send video. The link may have expired.")
 
     threading.Thread(target=process_and_send, daemon=True).start()
-
 # --- Handle member leaving ---
 @bot.message_handler(content_types=['left_chat_member'])
 def handle_left_member(message):
