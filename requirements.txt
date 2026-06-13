@@ -1,4 +1,4 @@
 pyTelegramBotAPI
 requests
 flask
-beautifulsoup4
+flask-cors
