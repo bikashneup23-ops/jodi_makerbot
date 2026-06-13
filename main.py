@@ -781,11 +781,9 @@ def handle_stream(message):
         return
     try:
         bot.send_message(
-            message.from_user.id,
-            f"🎥 Here\'s your stream link:
-
-{stream_link}
-
+    message.from_user.id,
+    "🎥 Here's your stream link:\n\n" + stream_link + "\n\n⚠️ Open with VLC or any M3U8 compatible player."
+)
 ⚠️ Open with VLC or any M3U8 compatible player."
         )
         bot.reply_to(message, "📩 Stream link sent to your DM!")
