@@ -75,6 +75,33 @@ def get_save_image():
     base = get_base()
     return random.choice([f"{base}/save1.png", f"{base}/save2.png", f"{base}/save3.png"])
 
+# --- Extract Streamtape direct link ---
+def extract_streamtape_link(url):
+    try:
+        import re
+        from bs4 import BeautifulSoup
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Find the hidden div with video link
+        scripts = response.text
+        match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = (.+);", scripts)
+        if match:
+            part1 = match.group(1)
+            match2 = re.search(r"\"(/streamtape[^\"]+)\"", scripts)
+            if match2:
+                token_part = match2.group(1)
+                # Combine to get final URL
+                full_url = "https://streamtape.to" + token_part
+                return full_url
+        return None
+    except Exception as e:
+        print(f"Streamtape extract error: {e}")
+        return None
+
 # --- Luck Ranges ---
 LUCK_RANGES = [
     {"min": 0,  "max": 10,  "image": "7luck.png",  "msg": "Don't even try today ☠️"},
@@ -1162,6 +1189,53 @@ def handle_callback(call):
         attacker = get_attacker(match)
         if attacker["id"] in match["choices"]:
             process_round(chat_id)
+            
+# --- Auto detect streamtape links in DM ---
+@bot.message_handler(func=lambda message: message.chat.type == 'private' and 
+                     message.text and 
+                     'streamtape' in message.text.lower())
+def handle_streamtape_link(message):
+    url = message.text.strip()
+    processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
+
+    def process_and_send():
+        direct_url = extract_streamtape_link(url)
+        if not direct_url:
+            bot.edit_message_text(
+                "❌ Could not extract video. Check the link and try again.",
+                message.chat.id,
+                processing_msg.message_id
+            )
+            return
+
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+            sent = bot.send_video(
+                message.chat.id,
+                direct_url,
+                caption=(
+                    "🎬 Here's your video!\n\n"
+                    "⚠️ This will be deleted in 10 minutes!\n"
+                    "📥 Download it before it's gone!"
+                ),
+                supports_streaming=True
+            )
+
+            # Auto delete after 10 minutes
+            def delete_video():
+                time.sleep(600)
+                try:
+                    bot.delete_message(message.chat.id, sent.message_id)
+                except:
+                    pass
+
+            threading.Thread(target=delete_video, daemon=True).start()
+
+        except Exception as e:
+            print(f"Video send error: {e}")
+            bot.send_message(message.chat.id, "❌ Failed to send video. Try again.")
+
+    threading.Thread(target=process_and_send, daemon=True).start()
 
 # --- Handle member leaving ---
 @bot.message_handler(content_types=['left_chat_member'])
