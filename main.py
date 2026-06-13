@@ -769,41 +769,59 @@ def handle_getcode(message):
         parse_mode='Markdown'
     )
 
-# --- /stream command ---
+ --- /stream command ---
 @bot.message_handler(commands=['stream'])
 def handle_stream(message):
-    if message.chat.type not in ['group', 'supergroup']:
-        bot.reply_to(message, "❌ This command only works in group chats!")
-        return
-    track("stream")
-    if not stream_link:
-        bot.reply_to(message, "⚠️ No stream link has been set yet. Check back later!")
-        return
-    try:
-        bot.send_message(
-    message.from_user.id,
-    "🎥 Here's your stream link:\n\n" + stream_link + "\n\n⚠️ Open with VLC or any M3U8 compatible player."
-)
-⚠️ Open with VLC or any M3U8 compatible player."
-        )
-        bot.reply_to(message, "📩 Stream link sent to your DM!")
-    except Exception:
-        bot.reply_to(message, "❌ I couldn\'t DM you! Please start the bot first.")
+    track_command("stream")
+    link = stream_data["link"]
+    stream_msg = (
+        f"🎬 Stream Link\n\n"
+        f"🔗 {link}\n\n"
+        f"⚠️ This link will be deleted in 15 minutes!\n"
+        f"📌 Forward to Saved Messages to keep it."
+    )
 
-# --- /setstream command (owner only) ---
-@bot.message_handler(commands=['setstream'])
-def handle_setstream(message):
-    global stream_link
-    if message.from_user.id != OWNER_ID:
-        bot.reply_to(message, "❌ This command is only for the bot owner!")
-        return
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2 or not parts[1].strip():
-        bot.reply_to(message, "❌ Usage: /setstream <url>\nExample: /setstream https://example.com/stream.m3u8")
-        return
-    stream_link = parts[1].strip()
-    save_data()
-    bot.reply_to(message, f"✅ Stream link updated!\n\n🔗 {stream_link}")
+    if message.chat.type in ['group', 'supergroup']:
+        # Tell them to check DM in group
+        bot.reply_to(message, "📩 Check your DM for the stream link!")
+        # Try to send DM
+        try:
+            sent = bot.send_message(message.from_user.id, stream_msg)
+            # Auto delete after 15 minutes
+            def delete_stream_msg(chat_id, msg_id):
+                time.sleep(900)  # 15 minutes
+                try:
+                    bot.delete_message(chat_id, msg_id)
+                except:
+                    pass
+            threading.Thread(
+                target=delete_stream_msg,
+                args=[message.from_user.id, sent.message_id],
+                daemon=True
+            ).start()
+        except Exception as e:
+            # User hasn't started bot in DM
+            print(f"Could not DM {message.from_user.id}: {e}")
+            bot.reply_to(
+                message,
+                f"⚠️ {get_username(message.from_user)}, I couldn't send you a DM!\n"
+                f"Please start the bot first 👉 @{bot.get_me().username}\n"
+                f"Then send /stream again."
+            )
+    else:
+        # Private DM — send directly
+        sent = bot.send_message(message.chat.id, stream_msg)
+        def delete_stream_msg_dm(chat_id, msg_id):
+            time.sleep(900)
+            try:
+                bot.delete_message(chat_id, msg_id)
+            except:
+                pass
+        threading.Thread(
+            target=delete_stream_msg_dm,
+            args=[message.chat.id, sent.message_id],
+            daemon=True
+        ).start()
 
 # --- /luck command ---
 @bot.message_handler(commands=['luck'])
