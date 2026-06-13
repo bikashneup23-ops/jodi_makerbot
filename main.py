@@ -769,7 +769,7 @@ def handle_getcode(message):
         parse_mode='Markdown'
     )
 
- --- /stream command ---
+# --- /stream command ---
 @bot.message_handler(commands=['stream'])
 def handle_stream(message):
     track_command("stream")
