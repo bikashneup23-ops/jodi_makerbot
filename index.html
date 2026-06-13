@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Video Extractor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #0f0f1a;
+    color: #eee;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .card {
+    background: #1a1a2e;
+    border: 1px solid #2a2a4a;
+    border-radius: 16px;
+    padding: 36px 32px;
+    width: 100%;
+    max-width: 480px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .logo {
+    font-size: 2rem;
+    text-align: center;
+    margin-bottom: 6px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.3rem;
+    color: #a78bfa;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.85rem;
+    color: #888;
+    margin-bottom: 28px;
+  }
+  label {
+    display: block;
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-bottom: 6px;
+    margin-top: 16px;
+  }
+  input {
+    width: 100%;
+    padding: 12px 14px;
+    background: #0f0f1a;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    color: #eee;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border 0.2s;
+  }
+  input:focus { border-color: #7c3aed; }
+  input::placeholder { color: #555; }
+  button {
+    margin-top: 24px;
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, #7c3aed, #4f46e5);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .status {
+    margin-top: 18px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    font-size: 0.9rem;
+    display: none;
+    text-align: center;
+  }
+  .status.success { background: #14532d; color: #86efac; display: block; }
+  .status.error   { background: #450a0a; color: #fca5a5; display: block; }
+  .status.loading { background: #1e3a5f; color: #93c5fd; display: block; }
+  .steps {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid #2a2a4a;
+    font-size: 0.82rem;
+    color: #666;
+    line-height: 1.8;
+  }
+  .steps span { color: #a78bfa; font-weight: 600; }
+  .tg-btn {
+    display: block;
+    margin-top: 14px;
+    text-align: center;
+    padding: 10px;
+    background: #1a3a5c;
+    border-radius: 10px;
+    color: #60a5fa;
+    text-decoration: none;
+    font-size: 0.88rem;
+  }
+  .tg-btn:hover { background: #1e4a7c; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🎬</div>
+  <h1>Video Link Extractor</h1>
+  <p class="subtitle">Extracts direct video links & sends to your Telegram</p>
+
+  <label>📎 Video Page URL</label>
+  <input type="url" id="videoUrl" placeholder="https://tpead.net/v/... or luluvid.com/d/...">
+
+  <label>🔑 Your Code <small style="color:#555">(from /getcode in bot DM)</small></label>
+  <input type="text" id="userCode" placeholder="e.g. A7X3K2" maxlength="6" style="text-transform:uppercase; letter-spacing:3px; font-weight:bold;">
+
+  <button id="extractBtn" onclick="extract()">Extract & Send to Telegram ✈️</button>
+
+  <div class="status" id="status"></div>
+
+  <div class="steps">
+    <span>How to use:</span><br>
+    1. Send <b>/getcode</b> to the bot in DM<br>
+    2. Paste the video page link above<br>
+    3. Enter your 6-digit code<br>
+    4. Click Extract — link arrives in your Telegram DM!
+  </div>
+
+  <a href="https://t.me/HourlyshipBot" class="tg-btn">💬 Open Bot on Telegram</a>
+</div>
+
+<script>
+// =============================================
+// CONFIGURATION — update these two values
+// =============================================
+const BOT_RENDER_URL = "https://YOUR_RENDER_URL.onrender.com"; // e.g. https://jodi-makerbot.onrender.com
+// =============================================
+
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + type;
+}
+
+async function extractTpead(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": "Mozilla/5.0" },
+    mode: 'cors'
+  });
+  const html = await res.text();
+
+  // Try norobotlink JS pattern
+  const match = html.match(/getElementById\('norobotlink'\)\.innerHTML = '\/\/tpead\.net\/get_vide' \+ \('(.+?)'\)\.substring\(1\)\.substring\(2\)/);
+  if (match) {
+    const suffix = match[1].substring(3);
+    return "https://tpead.net/get_video" + suffix + "&stream=1";
+  }
+
+  // Fallback: div content
+  const match2 = html.match(/id="norobotlink"[^>]*>([^<]+)</);
+  if (match2) {
+    let path = match2[1].trim();
+    if (path.startsWith("//")) path = "https:" + path;
+    return path + "&stream=1";
+  }
+
+  return null;
+}
+
+async function extractLuluvid(url) {
+  const res = await fetch(url, { mode: 'cors' });
+  const html = await res.text();
+  const match = html.match(/file["'\s]*:["'\s]*(https?:\/\/[^"']+\.mp4[^"']*)/);
+  if (match) return match[1];
+  const match2 = html.match(/(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/);
+  if (match2) return match2[1];
+  return null;
+}
+
+async function extract() {
+  const url = document.getElementById('videoUrl').value.trim();
+  const code = document.getElementById('userCode').value.trim().toUpperCase();
+  const btn = document.getElementById('extractBtn');
+
+  if (!url) { showStatus('❌ Please enter a video URL', 'error'); return; }
+  if (!code || code.length !== 6) { showStatus('❌ Please enter your 6-character code', 'error'); return; }
+
+  btn.disabled = true;
+  showStatus('⏳ Extracting video link...', 'loading');
+
+  let directUrl = null;
+
+  try {
+    if (url.includes('tpead')) {
+      directUrl = await extractTpead(url);
+    } else if (url.includes('luluvid')) {
+      directUrl = await extractLuluvid(url);
+    } else {
+      // Generic mp4 finder
+      const res = await fetch(url, { mode: 'cors' });
+      const html = await res.text();
+      const match = html.match(/(https?:\/\/[^\s"'<>]+\.mp4[^\s"'<>]*)/);
+      if (match) directUrl = match[1];
+    }
+  } catch(e) {
+    showStatus('❌ Could not fetch the page. The site may block browser requests.', 'error');
+    btn.disabled = false;
+    return;
+  }
+
+  if (!directUrl) {
+    showStatus('❌ Could not extract video link from this page.', 'error');
+    btn.disabled = false;
+    return;
+  }
+
+  showStatus('📤 Sending to your Telegram...', 'loading');
+
+  try {
+    const res = await fetch(`${BOT_RENDER_URL}/send_link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, url: directUrl })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      showStatus('✅ Link sent to your Telegram DM! Open VLC or NS Player to play.', 'success');
+      document.getElementById('videoUrl').value = '';
+      document.getElementById('userCode').value = '';
+    } else {
+      showStatus(`❌ ${data.error || 'Failed to send. Try again.'}`, 'error');
+    }
+  } catch(e) {
+    showStatus('❌ Could not reach the bot server. Try again.', 'error');
+  }
+
+  btn.disabled = false;
+}
+
+// Auto uppercase code input
+document.getElementById('userCode').addEventListener('input', function() {
+  this.value = this.value.toUpperCase();
+});
+</script>
+</body>
+</html>
