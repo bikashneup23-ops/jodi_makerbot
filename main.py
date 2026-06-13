@@ -1209,7 +1209,7 @@ def handle_tpead_link(message):
     processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
 
     def process_and_send():
-    direct_url = extract_tpead_link(url):
+    direct_url = extract_tpead_link(url)
     if not direct_url:
         bot.edit_message_text(
             "❌ Could not extract video. The link may have expired or is invalid.",
