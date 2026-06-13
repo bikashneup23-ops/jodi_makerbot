@@ -19,6 +19,8 @@ DATA_FILE = "data.json"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
+from flask_cors import CORS
+CORS(app)
 
 # --- Load/Save Data ---
 def load_data():
@@ -27,17 +29,18 @@ def load_data():
             with open(DATA_FILE, "r") as f:
                 data = json.load(f)
                 return (
-                    {int(k): v for k, v in data.get("members", {}).items()},
-                    {int(k): v for k, v in data.get("couples", {}).items()},
-                    data.get("luck", {}),
-                    {int(k): v for k, v in data.get("group_names", {}).items()},
-                    data.get("command_stats", {}),
-                    data.get("stream_link", None)
-                )
+    {int(k): v for k, v in data.get("members", {}).items()},
+    {int(k): v for k, v in data.get("couples", {}).items()},
+    data.get("luck", {}),
+    {int(k): v for k, v in data.get("group_names", {}).items()},
+    data.get("command_stats", {}),
+    data.get("stream_link", None),
+    data.get("video_codes", {})
+)
         except:
             pass
-    return {}, {}, {}, {}, {}, None
-
+    return {}, {}, {}, {}, {}, None, {}
+    
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump({
