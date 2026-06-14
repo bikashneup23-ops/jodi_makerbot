@@ -796,6 +796,20 @@ def handle_clearstream(message):
         bot.reply_to(message, f"✅ Stream `{channel_id}` removed!", parse_mode='Markdown')
     else:
         bot.reply_to(message, f"❌ No stream found with id `{channel_id}`", parse_mode='Markdown')
+
+# --- /liststream command ---
+    @bot.message_handler(commands=['liststreams'])
+def handle_liststreams(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ Owner only!")
+        return
+    if not stream_data:
+        bot.reply_to(message, "📭 No active streams.")
+        return
+    text = "📺 Active Streams:\n\n"
+    for cid, url in stream_data.items():
+        text += f"🔗 `{cid}` → {url}\n"
+    bot.reply_to(message, text, parse_mode='Markdown')
     
 # --- /stream command ---
 @bot.message_handler(commands=['stream'])
