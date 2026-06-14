@@ -75,39 +75,6 @@ def get_save_image():
     base = get_base()
     return random.choice([f"{base}/save1.png", f"{base}/save2.png", f"{base}/save3.png"])
 
-# --- Extract tpead.net direct link ---
-def extract_tpead_link(url):
-    try:
-        import re
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://tpead.net/",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-        response = requests.get(url, headers=headers, timeout=15)
-        html = response.text
-        print("HTML snippet:", html[html.find('norobotlink'):html.find('norobotlink')+300])
-
-        # Extract the token from JS: document.getElementById('norobotlink').innerHTML = '//tpead.net/get_vide' + ('xcdo?id=...token=...').substring(1).substring(2)
-        match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = '//tpead\.net/get_vide' \+ \('(.+?)'\)\.substring\(1\)\.substring\(2\)", html)
-        if match:
-            suffix = match.group(1)[3:]  # remove first 3 chars (substring(1) then substring(2) = skip 3)
-            direct_url = "https://tpead.net/get_video" + suffix + "&stream=1"
-            return direct_url
-
-        # Fallback: grab directly from #norobotlink div content
-        match2 = re.search(r'id="norobotlink"[^>]*>([^<]+)<', html)
-        if match2:
-            path = match2.group(1).strip()
-            if path.startswith("//"):
-                path = "https:" + path
-            return path + "&stream=1"
-
-        return None
-    except Exception as e:
-        print(f"tpead extract error: {e}")
-        return None
-        
 # --- Luck Ranges ---
 LUCK_RANGES = [
     {"min": 0,  "max": 10,  "image": "7luck.png",  "msg": "Don't even try today ☠️"},
@@ -253,8 +220,19 @@ OWNER_ID = 1245270119
 used_expose = {}
 # --- Horoscope cache ---
 horoscope_cache = {}  # {user_id: {"sign": sign, "date": date, "text": text}}
+
 # --- Stream Link ---
-stream_data = {"link": "Not set yet. Ask the admin!"}
+stream_data = {
+    "tnt1": "https://junkieembeds.pages.dev/embed/tnt-usa",
+    "fox": "https://junkieembeds.pages.dev/embed/fox-usa",
+    "espn": "https://junkieembeds.pages.dev/embed/espn-usa",
+}
+
+@app.route('/stream-url')
+def get_stream_url():
+    channel = request.args.get('id', 'fox').lower()
+    url = stream_data.get(channel, "")
+    return {"url": url, "channel": channel}
 
 # --- Track command usage ---
 def track_command(cmd):
@@ -784,21 +762,39 @@ def handle_broadcast(message):
             failed += 1
 
     bot.reply_to(message, f"✅ Broadcast done!\n\n📤 Sent: {success} groups\n❌ Failed: {failed} groups")
-# --- /setstream command (owner only) ---
+    
+# --- /setstream command ---
 @bot.message_handler(commands=['setstream'])
 def handle_setstream(message):
     if message.from_user.id != OWNER_ID:
-        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        bot.reply_to(message, "❌ Owner only!")
         return
+    # Usage: /setstream tnt1 https://...
+    parts = message.text.split(None, 2)
+    if len(parts) < 3:
+        bot.reply_to(message, "❌ Usage: /setstream <id> <url>\nExample: /setstream tnt1 https://...")
+        return
+    channel_id = parts[1].lower()
+    stream_data[channel_id] = parts[2].strip()
+    bot.reply_to(message, f"✅ Stream updated!\n\n🔗 ID: `{channel_id}`\n📺 URL: {stream_data[channel_id]}", parse_mode='Markdown')
 
+# --- /clearstream command ---
+@bot.message_handler(commands=['clearstream'])
+def handle_clearstream(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ Owner only!")
+        return
     parts = message.text.split(None, 1)
-    if len(parts) < 2 or not parts[1].strip():
-        bot.reply_to(message, "❌ Usage: /setstream <your link here>")
+    if len(parts) < 2:
+        bot.reply_to(message, "❌ Usage: /clearstream <id>\nExample: /clearstream tnt1")
         return
-
-    stream_data["link"] = parts[1].strip()
-    bot.reply_to(message, f"✅ Stream link updated!\n\n🔗 {stream_data['link']}")
-
+    channel_id = parts[1].strip().lower()
+    if channel_id in stream_data:
+        del stream_data[channel_id]
+        bot.reply_to(message, f"✅ Stream `{channel_id}` removed!", parse_mode='Markdown')
+    else:
+        bot.reply_to(message, f"❌ No stream found with id `{channel_id}`", parse_mode='Markdown')
+    
 # --- /stream command ---
 @bot.message_handler(commands=['stream'])
 def handle_stream(message):
@@ -1195,47 +1191,7 @@ def handle_callback(call):
         attacker = get_attacker(match)
         if attacker["id"] in match["choices"]:
             process_round(chat_id)
-            
-# --- Auto detect streamtape links in DM ---
-@bot.message_handler(func=lambda message: message.chat.type == 'private' and 
-                     message.text and 
-                     'streamtape' in message.text.lower())
-# --- Auto detect tpead links in DM ---
-@bot.message_handler(func=lambda message: message.chat.type == 'private' and
-                      message.text and
-                      'tpead' in message.text.lower())
-def handle_tpead_link(message):
-    url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
-
-    def process_and_send():
-        direct_url = extract_tpead_link(url)
-        if not direct_url:
-            bot.edit_message_text(
-                "❌ Could not extract video. The link may have expired or is invalid.",
-                message.chat.id,
-                processing_msg.message_id
-            )
-            return
-        try:
-            bot.delete_message(message.chat.id, processing_msg.message_id)
-            bot.send_message(
-                message.chat.id,
-                f"🎬 *Video Ready!*\n\n"
-                f"`{direct_url}`\n\n"
-                f"📌 *How to play:*\n"
-                f"*VLC:* Media → Open Network Stream → paste link\n"
-                f"*NS Player:* Add URL → paste link\n"
-                f"*MX Player:* Stream → paste link\n\n"
-                f"⚠️ *Link expires in ~24 hours*",
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            print(f"Error sending URL: {e}")
-            bot.send_message(message.chat.id, "❌ Failed to process link. Try again.")
-
-    threading.Thread(target=process_and_send, daemon=True).start()
-        
+ 
 # --- Handle member leaving ---
 @bot.message_handler(content_types=['left_chat_member'])
 def handle_left_member(message):
