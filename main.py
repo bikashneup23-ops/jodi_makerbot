@@ -77,6 +77,37 @@ def get_save_image():
     base = get_base()
     return random.choice([f"{base}/save1.png", f"{base}/save2.png", f"{base}/save3.png"])
 
+# --- Extract tpead.net direct link ---
+def extract_tpead_link(url):
+    try:
+        import re
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            "Referer": "https://tpead.net/",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        response = requests.get(url, headers=headers, timeout=15)
+        html = response.text
+        print("HTML snippet:", html[html.find('norobotlink'):html.find('norobotlink')+300])
+
+        match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = '//tpead\.net/get_vide' \+ \('(.+?)'\)\.substring\(1\)\.substring\(2\)", html)
+        if match:
+            suffix = match.group(1)[3:]
+            direct_url = "https://tpead.net/get_video" + suffix + "&stream=1"
+            return direct_url
+
+        match2 = re.search(r'id="norobotlink"[^>]*>([^<]+)<', html)
+        if match2:
+            path = match2.group(1).strip()
+            if path.startswith("//"):
+                path = "https:" + path
+            return path + "&stream=1"
+
+        return None
+    except Exception as e:
+        print(f"tpead extract error: {e}")
+        return None
+
 # --- Luck Ranges ---
 LUCK_RANGES = [
     {"min": 0,  "max": 10,  "image": "7luck.png",  "msg": "Don't even try today ☠️"},
@@ -221,26 +252,29 @@ OWNER_ID = 1245270119
 # --- Used expose tracker ---
 used_expose = {}
 # --- Horoscope cache ---
-horoscope_cache = {}  # {user_id: {"sign": sign, "date": date, "text": text}}
-
-# --- Stream Link ---
-stream_data = {
-    "tnt1": "https://junkieembeds.pages.dev/embed/tnt-usa",
-    "fox": "https://junkieembeds.pages.dev/embed/fox-usa",
-    "espn": "https://junkieembeds.pages.dev/embed/espn-usa",
-}
-
-@app.route('/stream-url')
-def get_stream_url():
-    channel = request.args.get('id', 'fox').lower()
-    url = stream_data.get(channel, "")
-    return {"url": url, "channel": channel}
+horoscope_cache = {}
+# --- Stream Data ---
+stream_data = {}
 
 # --- Track command usage ---
 def track_command(cmd):
     command_stats[cmd] = command_stats.get(cmd, 0) + 1
     save_data()
-    
+
+# ============================================================
+# FLASK ROUTES
+# ============================================================
+
+@app.route('/')
+def health_check():
+    return "Bot is running!", 200
+
+@app.route('/stream-url')
+def get_stream_url():
+    channel = request.args.get('id', '').lower()
+    url = stream_data.get(channel, "")
+    return {"url": url}
+
 # ============================================================
 # FOOTBALL GAME FUNCTIONS
 # ============================================================
@@ -318,7 +352,6 @@ def send_shot_choices(match, chat_id):
         return
 
     match["state"] = "collecting"
-
     timer = threading.Timer(10.0, handle_timeout, args=[chat_id])
     timer.start()
     match["timers"]["round"] = timer
@@ -394,11 +427,9 @@ def process_round(chat_id):
         )
 
     bot.send_photo(chat_id, image, caption=msg)
-
     match["choices"] = {}
     match["attacker"] = defender["id"]
     match["round"] += 1
-
     check_match_end(chat_id)
 
 def check_match_end(chat_id):
@@ -463,7 +494,6 @@ def advance_tournament(chat_id):
     winners = game["tournament_winners"]
 
     if len(players) == 2:
-        # Only 1 match, winner is winners[0], loser is the other player
         loser = players[1] if winners[0]["id"] == players[0]["id"] else players[0]
         announce_champion(chat_id, winners[0], loser)
 
@@ -471,7 +501,6 @@ def advance_tournament(chat_id):
         if len(winners) == 1:
             played_ids = {game["matches"][0]["p1"]["id"], game["matches"][0]["p2"]["id"]}
             third = next(p for p in players if p["id"] not in played_ids)
-            # Store final match in matches list
             final_match = create_match(winners[0], third)
             game["matches"].append(final_match)
             bot.send_message(chat_id, f"🏟️ FINAL!\n{winners[0]['name']} vs {third['name']}\nGet ready! ⚽")
@@ -488,17 +517,14 @@ def advance_tournament(chat_id):
 
     elif len(players) == 4:
         if len(winners) == 1:
-            # Semi-final 1 done, play semi-final 2
             bot.send_message(chat_id, f"⚽ Semi-Final 2!\n{game['matches'][1]['p1']['name']} vs {game['matches'][1]['p2']['name']}\nGet ready!")
             time.sleep(2)
             start_match(chat_id, game["matches"][1]["p1"], game["matches"][1]["p2"])
         elif len(winners) == 2:
-            # Both semis done, play the grand final
             bot.send_message(chat_id, f"🏆 GRAND FINAL!\n{winners[0]['name']} vs {winners[1]['name']}\nGet ready! ⚽")
             time.sleep(2)
             start_match(chat_id, winners[0], winners[1])
         elif len(winners) == 3:
-            # Grand final done — winners[2] is champion, winners[1] is runner-up
             announce_champion(chat_id, winners[2], winners[1])
 
 def start_match(chat_id, p1, p2):
@@ -526,7 +552,6 @@ def cancel_game(chat_id):
 # BOT HANDLERS
 # ============================================================
 
-# --- /start command ---
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     owner_extra = ""
@@ -547,7 +572,6 @@ def handle_start(message):
         parse_mode='Markdown'
     )
 
-# --- /couple command ---
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -604,7 +628,6 @@ def handle_couple(message):
     )
     bot.send_photo(chat_id, dare['image'], caption=caption)
 
-# --- /breakup command ---
 @bot.message_handler(commands=['breakup'])
 def handle_breakup(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -638,7 +661,6 @@ def handle_breakup(message):
     )
     bot.send_photo(chat_id, breakup_image, caption=caption)
 
-# --- /gettingbored command ---
 @bot.message_handler(commands=['gettingbored'])
 def handle_gettingbored(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -649,8 +671,7 @@ def handle_gettingbored(message):
     sender = get_username(message.from_user)
     suggestion = random.choice(BOREDOM_SUGGESTIONS)
     bot.send_message(message.chat.id, f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}")
-    
-# --- /horoscope command ---
+
 @bot.message_handler(commands=['horoscope'])
 def handle_horoscope(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -687,7 +708,6 @@ def handle_horoscope(message):
         reply_markup=markup
     )
 
-# --- /mygroups command ---
 @bot.message_handler(commands=['mygroups'])
 def handle_mygroups(message):
     if message.from_user.id != OWNER_ID:
@@ -704,14 +724,12 @@ def handle_mygroups(message):
         member_list = ", ".join(members.values()) if members else "No members"
         text += f"{i}. {name} — {len(members)} members\n   👥 {member_list}\n\n"
 
-    # Split if too long
     if len(text) > 4000:
         for i in range(0, len(text), 4000):
             bot.send_message(message.chat.id, text[i:i+4000])
     else:
         bot.send_message(message.chat.id, text)
 
-# --- /stats command ---
 @bot.message_handler(commands=['stats'])
 def handle_stats(message):
     if message.from_user.id != OWNER_ID:
@@ -722,7 +740,6 @@ def handle_stats(message):
         bot.reply_to(message, "No stats yet!")
         return
 
-    # Sort by most used
     sorted_stats = sorted(command_stats.items(), key=lambda x: x[1], reverse=True)
 
     text = "📊 Bot Command Stats\n\n"
@@ -734,7 +751,6 @@ def handle_stats(message):
 
     bot.send_message(message.chat.id, text)
 
-# --- /broadcast command ---
 @bot.message_handler(commands=['broadcast'])
 def handle_broadcast(message):
     if message.from_user.id != OWNER_ID:
@@ -745,7 +761,6 @@ def handle_broadcast(message):
         bot.reply_to(message, "❌ No active groups found!")
         return
 
-    # Get message after /broadcast
     parts = message.text.split(None, 1)
     if len(parts) < 2 or not parts[1].strip():
         bot.reply_to(message, "❌ Usage: /broadcast your message here")
@@ -764,23 +779,20 @@ def handle_broadcast(message):
             failed += 1
 
     bot.reply_to(message, f"✅ Broadcast done!\n\n📤 Sent: {success} groups\n❌ Failed: {failed} groups")
-    
-# --- /setstream command ---
+
 @bot.message_handler(commands=['setstream'])
 def handle_setstream(message):
     if message.from_user.id != OWNER_ID:
         bot.reply_to(message, "❌ Owner only!")
         return
-    # Usage: /setstream tnt1 https://...
     parts = message.text.split(None, 2)
     if len(parts) < 3:
-        bot.reply_to(message, "❌ Usage: /setstream <id> <url>\nExample: /setstream tnt1 https://...")
+        bot.reply_to(message, "❌ Usage: /setstream <id> <url>\nExample: /setstream fifa1 https://...")
         return
     channel_id = parts[1].lower()
     stream_data[channel_id] = parts[2].strip()
     bot.reply_to(message, f"✅ Stream updated!\n\n🔗 ID: `{channel_id}`\n📺 URL: {stream_data[channel_id]}", parse_mode='Markdown')
 
-# --- /clearstream command ---
 @bot.message_handler(commands=['clearstream'])
 def handle_clearstream(message):
     if message.from_user.id != OWNER_ID:
@@ -788,7 +800,7 @@ def handle_clearstream(message):
         return
     parts = message.text.split(None, 1)
     if len(parts) < 2:
-        bot.reply_to(message, "❌ Usage: /clearstream <id>\nExample: /clearstream tnt1")
+        bot.reply_to(message, "❌ Usage: /clearstream <id>\nExample: /clearstream fifa1")
         return
     channel_id = parts[1].strip().lower()
     if channel_id in stream_data:
@@ -797,8 +809,7 @@ def handle_clearstream(message):
     else:
         bot.reply_to(message, f"❌ No stream found with id `{channel_id}`", parse_mode='Markdown')
 
-# --- /liststream command ---
-    @bot.message_handler(commands=['liststreams'])
+@bot.message_handler(commands=['liststreams'])
 def handle_liststreams(message):
     if message.from_user.id != OWNER_ID:
         bot.reply_to(message, "❌ Owner only!")
@@ -810,39 +821,32 @@ def handle_liststreams(message):
     for cid, url in stream_data.items():
         text += f"🔗 `{cid}` → {url}\n"
     bot.reply_to(message, text, parse_mode='Markdown')
-    
-# --- /stream command ---
+
 @bot.message_handler(commands=['stream'])
 def handle_stream(message):
     track_command("stream")
-    link = stream_data["link"]
-    stream_msg = (
-        f"🎬 Stream Link\n\n"
-        f"🔗 {link}\n\n"
-        f"⚠️ This link will be deleted in 15 minutes!\n"
-        f"📌 Forward to Saved Messages to keep it."
-    )
+
+    if not stream_data:
+        bot.reply_to(message, "⚠️ No streams are currently active. Check back later!")
+        return
+
+    text = "🎬 *Active Streams*\n\n"
+    for cid, url in stream_data.items():
+        text += f"📺 `{cid}` → {url}\n"
+    text += "\n⚠️ Links will be deleted in 15 minutes!\n📌 Forward to Saved Messages to keep them."
 
     if message.chat.type in ['group', 'supergroup']:
-        # Tell them to check DM in group
-        bot.reply_to(message, "📩 Check your DM for the stream link!")
-        # Try to send DM
+        bot.reply_to(message, "📩 Check your DM for stream links!")
         try:
-            sent = bot.send_message(message.from_user.id, stream_msg)
-            # Auto delete after 15 minutes
-            def delete_stream_msg(chat_id, msg_id):
-                time.sleep(900)  # 15 minutes
+            sent = bot.send_message(message.from_user.id, text, parse_mode='Markdown')
+            def delete_msg(chat_id, msg_id):
+                time.sleep(900)
                 try:
                     bot.delete_message(chat_id, msg_id)
                 except:
                     pass
-            threading.Thread(
-                target=delete_stream_msg,
-                args=[message.from_user.id, sent.message_id],
-                daemon=True
-            ).start()
+            threading.Thread(target=delete_msg, args=[message.from_user.id, sent.message_id], daemon=True).start()
         except Exception as e:
-            # User hasn't started bot in DM
             print(f"Could not DM {message.from_user.id}: {e}")
             bot.reply_to(
                 message,
@@ -851,21 +855,15 @@ def handle_stream(message):
                 f"Then send /stream again."
             )
     else:
-        # Private DM — send directly
-        sent = bot.send_message(message.chat.id, stream_msg)
-        def delete_stream_msg_dm(chat_id, msg_id):
+        sent = bot.send_message(message.chat.id, text, parse_mode='Markdown')
+        def delete_msg_dm(chat_id, msg_id):
             time.sleep(900)
             try:
                 bot.delete_message(chat_id, msg_id)
             except:
                 pass
-        threading.Thread(
-            target=delete_stream_msg_dm,
-            args=[message.chat.id, sent.message_id],
-            daemon=True
-        ).start()
+        threading.Thread(target=delete_msg_dm, args=[message.chat.id, sent.message_id], daemon=True).start()
 
-# --- /luck command ---
 @bot.message_handler(commands=['luck'])
 def handle_luck(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -892,7 +890,6 @@ def handle_luck(message):
     )
     bot.send_photo(message.chat.id, image_url, caption=caption)
 
-# --- /expose command ---
 @bot.message_handler(commands=['expose'])
 def handle_expose(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -926,7 +923,6 @@ def handle_expose(message):
 
     bot.send_message(message.chat.id, f"🔍 Exposed! {target}\n\n{expose_msg}")
 
-# --- /football command ---
 @bot.message_handler(commands=['football'])
 def handle_football(message):
     if message.chat.type not in ['group', 'supergroup']:
@@ -1017,7 +1013,6 @@ def start_tournament(chat_id):
         time.sleep(2)
         start_match(chat_id, players[0], players[1])
 
-# --- Callback handler ---
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call):
     data = call.data
@@ -1103,34 +1098,32 @@ def handle_callback(call):
         defender = get_defender(match)
         if defender["id"] in match["choices"]:
             process_round(chat_id)
+
     elif data.startswith("horo_"):
         parts = data.split("_")
         user_id = int(parts[1])
         sign = parts[2]
         today = today_str()
 
-        # Only the person who requested can click
         if call.from_user.id != user_id:
             bot.answer_callback_query(call.id, "❌ This is not your horoscope request!")
             return
 
         bot.answer_callback_query(call.id, f"Fetching {sign.capitalize()} horoscope...")
 
-        # Check cache
         cache_key = str(user_id)
         if cache_key in horoscope_cache and horoscope_cache[cache_key]["date"] == today and horoscope_cache[cache_key]["sign"] == sign:
             horoscope_text = horoscope_cache[cache_key]["text"]
         else:
-            # Fetch from API
             try:
                 response = requests.get(
                     f"https://horoscope-app-api.vercel.app/api/v1/get-horoscope/daily?sign={sign}&day=today",
                     timeout=10
                 )
                 data_json = response.json()
-                print(f"Horoscope raw response: {data_json}")  # DEBUG
+                print(f"Horoscope raw response: {data_json}")
                 horoscope_data = data_json.get("data", {})
-                
+
                 if isinstance(horoscope_data, str):
                     horoscope_text = f"🔮 {horoscope_data}"
                 elif isinstance(horoscope_data, dict):
@@ -1144,7 +1137,7 @@ def handle_callback(call):
                     horoscope_text = f"📅 Date: {date_str}\n\n🔮 {reading}"
                 else:
                     horoscope_text = "❌ Unexpected API response format."
-                # Cache it
+
                 horoscope_cache[cache_key] = {
                     "sign": sign,
                     "date": today,
@@ -1168,7 +1161,6 @@ def handle_callback(call):
             f"{emoji} {sign.capitalize()} Horoscope for {username}\n\n{horoscope_text}"
         )
 
-        # Remove the sign selection buttons
         try:
             bot.edit_message_reply_markup(call.message.chat.id, call.message.message_id, reply_markup=None)
         except:
@@ -1207,8 +1199,42 @@ def handle_callback(call):
         attacker = get_attacker(match)
         if attacker["id"] in match["choices"]:
             process_round(chat_id)
- 
-# --- Handle member leaving ---
+
+@bot.message_handler(func=lambda message: message.chat.type == 'private' and
+                     message.text and
+                     ('streamtape' in message.text.lower() or 'tpead' in message.text.lower()))
+def handle_tpead_link(message):
+    url = message.text.strip()
+    processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
+
+    def process_and_send():
+        direct_url = extract_tpead_link(url)
+        if not direct_url:
+            bot.edit_message_text(
+                "❌ Could not extract video. The link may have expired or is invalid.",
+                message.chat.id,
+                processing_msg.message_id
+            )
+            return
+        try:
+            bot.delete_message(message.chat.id, processing_msg.message_id)
+            bot.send_message(
+                message.chat.id,
+                f"🎬 *Video Ready!*\n\n"
+                f"`{direct_url}`\n\n"
+                f"📌 *How to play:*\n"
+                f"*VLC:* Media → Open Network Stream → paste link\n"
+                f"*NS Player:* Add URL → paste link\n"
+                f"*MX Player:* Stream → paste link\n\n"
+                f"⚠️ *Link expires in ~24 hours*",
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"Error sending URL: {e}")
+            bot.send_message(message.chat.id, "❌ Failed to process link. Try again.")
+
+    threading.Thread(target=process_and_send, daemon=True).start()
+
 @bot.message_handler(content_types=['left_chat_member'])
 def handle_left_member(message):
     chat_id = message.chat.id
@@ -1218,7 +1244,6 @@ def handle_left_member(message):
         del group_members[chat_id][user_id]
         save_data()
 
-# --- Track every message ---
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
     if message.from_user.is_bot:
@@ -1235,7 +1260,6 @@ def track_members(message):
         group_names[chat_id] = message.chat.title
     save_data()
 
-# --- Webhook route ---
 @app.route(f'/{TOKEN}', methods=['POST'])
 def webhook():
     json_str = request.get_data(as_text=True)
@@ -1243,17 +1267,6 @@ def webhook():
     bot.process_new_updates([update])
     return 'ok', 200
 
-# --- Health check ---
-@app.route('/')
-def health_check():
-    return "Bot is running!", 200
-
-# --- Stream URL API for webpage ---
-@app.route('/stream-url')
-def get_stream_url():
-    return {"url": stream_data["link"]}
-
-# --- Setup webhook ---
 def set_webhook():
     webhook_url = f"{RENDER_URL}/{TOKEN}"
     requests.get(
@@ -1267,7 +1280,6 @@ def set_webhook():
     )
     print(f"Webhook set: {result.json()}")
 
-# --- Start ---
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
     print(f"RENDER_URL: {RENDER_URL}")
