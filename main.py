@@ -5,6 +5,7 @@ import json
 import threading
 import requests
 from flask import Flask, request
+from flask_cors import CORS
 import telebot
 from telebot import types
 from datetime import datetime
@@ -19,6 +20,7 @@ DATA_FILE = "data.json"
 
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
+CORS(app)
 
 # --- Load/Save Data ---
 def load_data():
