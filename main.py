@@ -1276,6 +1276,11 @@ def webhook():
 def health_check():
     return "Bot is running!", 200
 
+# --- Stream URL API for webpage ---
+@app.route('/stream-url')
+def get_stream_url():
+    return {"url": stream_data["link"]}
+
 # --- Setup webhook ---
 def set_webhook():
     webhook_url = f"{RENDER_URL}/{TOKEN}"
