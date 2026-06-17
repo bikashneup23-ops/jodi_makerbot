@@ -830,7 +830,7 @@ def handle_stream(message):
         bot.reply_to(message, "⚠️ No streams are currently active. Check back later!")
         return
 
-    STREAM_PAGE = "https://hourlyship.pages.dev"
+    STREAM_PAGE = "https://sportzyhub.pages.dev"
     text = "🎬 *Active Streams*\n\n"
     for cid in stream_data.keys():
         text += f"📺 {cid} → {STREAM_PAGE}/?id={cid}\n"
