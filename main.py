@@ -562,15 +562,19 @@ def handle_start(message):
         "👋 Hey! I'm *Hourlyship Bot* 💘\n\n"
         "Your group's ultimate fun companion!\n\n"
         "Here's what I can do:\n\n"
+        "🎬 /stream — Match live streaming\n"
         "💘 /couple — Pick couple of the hour with a dare\n"
         "💔 /breakup @user — Send a breakup message\n"
         "🍀 /luck — Check your daily luck score\n"
+        "🔮 /horoscope — Get your zodiac horoscope\n"
         "🔍 /expose @user — Expose someone's secrets\n"
         "😌 /gettingbored — Get a fun suggestion\n"
         f"⚽ /football — Start a penalty shootout tournament{owner_extra}\n\n"
         "➕ Add me to your group and let the fun begin!",
         parse_mode='Markdown'
     )
+    if message.chat.type == 'private':
+        handle_stream(message)
 
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
@@ -674,10 +678,6 @@ def handle_gettingbored(message):
 
 @bot.message_handler(commands=['horoscope'])
 def handle_horoscope(message):
-    if message.chat.type not in ['group', 'supergroup']:
-        bot.reply_to(message, "❌ This command only works in group chats!")
-        return
-
     track_command("horoscope")
 
     markup = types.InlineKeyboardMarkup()
@@ -830,9 +830,10 @@ def handle_stream(message):
         bot.reply_to(message, "⚠️ No streams are currently active. Check back later!")
         return
 
+    STREAM_PAGE = "https://hourlyship.pages.dev"
     text = "🎬 *Active Streams*\n\n"
-    for cid, url in stream_data.items():
-        text += f"📺 `{cid}` → {url}\n"
+    for cid in stream_data.keys():
+        text += f"📺 {cid} → {STREAM_PAGE}/?id={cid}\n"
     text += "\n⚠️ Links will be deleted in 15 minutes!\n📌 Forward to Saved Messages to keep them."
 
     if message.chat.type in ['group', 'supergroup']:
@@ -866,9 +867,6 @@ def handle_stream(message):
 
 @bot.message_handler(commands=['luck'])
 def handle_luck(message):
-    if message.chat.type not in ['group', 'supergroup']:
-        bot.reply_to(message, "❌ This command only works in group chats!")
-        return
     track_command("luck")
 
     user_id = str(message.from_user.id)
