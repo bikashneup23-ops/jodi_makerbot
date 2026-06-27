@@ -517,7 +517,7 @@ def advance_tournament(chat_id):
         elif len(winners) == 2:
             final_match = game["matches"][1]
             final_ids = {final_match["p1"]["id"], final_match["p2"]["id"]}
-         runner_up = next(p for p in players if p["id"] in final_ids and p["id"] != winners[1]["id"])
+            runner_up = next(p for p in players if p["id"] in final_ids and p["id"] != winners[1]["id"])
             announce_champion(chat_id, winners[1], runner_up)
 
     elif len(players) == 4:
@@ -581,7 +581,6 @@ def handle_start(message):
     )
     if message.chat.type == 'private':
         handle_stream(message)
-   
 
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
@@ -684,8 +683,8 @@ def handle_gettingbored(message):
     bot.send_message(message.chat.id, f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}")
 
 @bot.message_handler(commands=['horoscope'])
-def handle_horoscope(message):  
-track_command("horoscope", message.from_user.id)
+def handle_horoscope(message):
+    track_command("horoscope", message.from_user.id)
 
     markup = types.InlineKeyboardMarkup()
     markup.row(
@@ -803,7 +802,6 @@ def handle_cookies_command(message):
         "I'll convert it to JSON for you.",
         parse_mode='Markdown'
     )
-
 
 @bot.message_handler(content_types=['document'], func=lambda m: m.from_user.id in awaiting_cookies)
 def handle_cookies_file(message):
@@ -981,7 +979,8 @@ def handle_expose(message):
     if len(parts) < 2:
         bot.reply_to(message, "❌ Usage: /expose @username")
         return
-target = parts[1]
+
+    target = parts[1]
     if not target.startswith("@"):
         target = f"@{target}"
 
@@ -1177,7 +1176,8 @@ def handle_callback(call):
         defender = get_defender(match)
         if defender["id"] in match["choices"]:
             process_round(chat_id)
-elif data.startswith("horo_"):
+
+    elif data.startswith("horo_"):
         parts = data.split("_")
         user_id = int(parts[1])
         sign = parts[2]
