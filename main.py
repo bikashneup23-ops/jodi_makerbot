@@ -765,16 +765,20 @@ def handle_usercount(message):
         return
     bot.reply_to(message, f"👤 Total unique users who have used the bot: {len(unique_users)}")
 
+
 # --- Cookies converter: Netscape cookies.txt -> JSON ---
 awaiting_cookies = set()  # user_ids currently expected to send a cookies file
 
 def parse_netscape_cookies(text):
     cookies = []
-    for line in text.splitlines():
-        line = line.strip()
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
+        # Telegram sometimes converts tabs to multiple spaces when pasted
         parts = line.split("\t")
+        if len(parts) != 7:
+            parts = line.split()
         if len(parts) != 7:
             continue
         domain, include_sub, path, secure, expiry, name, value = parts
@@ -789,6 +793,28 @@ def parse_netscape_cookies(text):
         })
     return cookies
 
+def send_cookies_json(message, text):
+    try:
+        cookies_json = parse_netscape_cookies(text)
+        if not cookies_json:
+            bot.reply_to(message, "❌ Couldn't parse any cookies. Make sure it's valid Netscape cookies.txt format (tab-separated, 7 fields per line).")
+            return
+
+        cookie_line = "; ".join(f"{c['name']}={c['value']}" for c in cookies_json)
+
+        reply = f"✅ Converted! {len(cookies_json)} cookies found.\n\n`{cookie_line}`"
+
+        # Telegram message limit is 4096 chars
+        if len(reply) > 4096:
+            bot.send_message(message.chat.id, f"✅ Converted! {len(cookies_json)} cookies found.")
+            for i in range(0, len(cookie_line), 4000):
+                bot.send_message(message.chat.id, f"`{cookie_line[i:i+4000]}`", parse_mode='Markdown')
+        else:
+            bot.send_message(message.chat.id, reply, parse_mode='Markdown')
+    except Exception as e:
+        print(f"Cookie conversion error: {e}")
+        bot.reply_to(message, "❌ Failed to convert cookies. Please check the format and try again.")
+
 @bot.message_handler(commands=['cookies'])
 def handle_cookies_command(message):
     if message.from_user.id != OWNER_ID:
@@ -798,7 +824,9 @@ def handle_cookies_command(message):
     awaiting_cookies.add(message.from_user.id)
     bot.reply_to(
         message,
-        "🍪 Please send your *cookies.txt* file (Netscape format) now.\n"
+        "🍪 Please send your cookies now — either:\n"
+        "📎 Upload a *cookies.txt* file, OR\n"
+        "📋 Paste the raw cookie text directly\n\n"
         "I'll convert it to JSON for you.",
         parse_mode='Markdown'
     )
@@ -810,26 +838,18 @@ def handle_cookies_file(message):
         file_info = bot.get_file(message.document.file_id)
         downloaded = bot.download_file(file_info.file_path)
         text = downloaded.decode('utf-8', errors='ignore')
-
-        cookies_json = parse_netscape_cookies(text)
-        if not cookies_json:
-            bot.reply_to(message, "❌ Couldn't parse any cookies. Make sure it's a valid Netscape cookies.txt file.")
-            awaiting_cookies.discard(user_id)
-            return
-
-        json_text = json.dumps(cookies_json, indent=2)
-        json_bytes = json_text.encode('utf-8')
-
-        bot.send_document(
-            message.chat.id,
-            (f"cookies_{user_id}.json", json_bytes),
-            caption=f"✅ Converted! {len(cookies_json)} cookies found."
-        )
+        send_cookies_json(message, text)
     except Exception as e:
-        print(f"Cookie conversion error: {e}")
-        bot.reply_to(message, "❌ Failed to convert cookies. Please make sure the file is a valid cookies.txt and try again.")
+        print(f"Cookie file error: {e}")
+        bot.reply_to(message, "❌ Failed to read the file. Please try again.")
     finally:
         awaiting_cookies.discard(user_id)
+
+@bot.message_handler(content_types=['text'], func=lambda m: m.from_user.id in awaiting_cookies)
+def handle_cookies_text(message):
+    user_id = message.from_user.id
+    send_cookies_json(message, message.text)
+    awaiting_cookies.discard(user_id)
 
 @bot.message_handler(commands=['broadcast'])
 def handle_broadcast(message):
@@ -1321,6 +1341,123 @@ def handle_left_member(message):
     if chat_id in group_members and user_id in group_members[chat_id]:
         del group_members[chat_id][user_id]
         save_data()
+
+# --- /converter command (admin only) ---
+@bot.message_handler(commands=['converter'])
+def handle_converter(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the admin!")
+        return
+    if message.chat.type != 'private':
+        bot.reply_to(message, "❌ Use this command in DM only!")
+        return
+
+    msg = bot.reply_to(message, "🔗 Drop the link 👇")
+    bot.register_next_step_handler(msg, process_converter_link)
+
+def process_converter_link(message):
+    if message.from_user.id != OWNER_ID:
+        return
+
+    url = message.text.strip() if message.text else None
+    if not url or not url.startswith("http"):
+        bot.reply_to(message, "❌ Invalid link! Please send a valid URL.")
+        return
+
+    status_msg = bot.reply_to(message, "⏳ Starting... Please wait.")
+
+    def process():
+        mkv_file = f"temp_{message.from_user.id}.mkv"
+        mp4_file = f"temp_{message.from_user.id}.mp4"
+        try:
+            # Step 1: Download MKV
+            bot.edit_message_text("📥 Downloading MKV...", message.chat.id, status_msg.message_id)
+            headers = {"User-Agent": "Mozilla/5.0"}
+            response = requests.get(url, headers=headers, stream=True, timeout=300)
+
+            if response.status_code != 200:
+                bot.edit_message_text(f"❌ Download failed. Status: {response.status_code}", message.chat.id, status_msg.message_id)
+                return
+
+            total = int(response.headers.get('content-length', 0))
+            downloaded = 0
+            last_percent = -1
+
+            with open(mkv_file, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total:
+                            percent = int(downloaded / total * 100)
+                            if percent % 25 == 0 and percent != last_percent:
+                                last_percent = percent
+                                try:
+                                    bot.edit_message_text(
+                                        f"📥 Downloading... {percent}%\n"
+                                        f"({downloaded // (1024*1024)}MB / {total // (1024*1024)}MB)",
+                                        message.chat.id, status_msg.message_id
+                                    )
+                                except:
+                                    pass
+
+            # Step 2: Remux MKV → MP4
+            bot.edit_message_text("🔄 Converting MKV → MP4...", message.chat.id, status_msg.message_id)
+            import subprocess
+            result = subprocess.run(
+                ["ffmpeg", "-i", mkv_file, "-codec", "copy", "-y", mp4_file],
+                capture_output=True, timeout=300
+            )
+
+            if result.returncode != 0:
+                bot.edit_message_text(
+                    f"❌ Conversion failed!\n\n{result.stderr.decode()[-500:]}",
+                    message.chat.id, status_msg.message_id
+                )
+                return
+
+            # Step 3: Get Gofile server
+            bot.edit_message_text("📤 Uploading to Gofile...", message.chat.id, status_msg.message_id)
+            server_res = requests.get("https://api.gofile.io/servers", timeout=15)
+            server = server_res.json()["data"]["servers"][0]["name"]
+
+            # Step 4: Upload MP4
+            with open(mp4_file, 'rb') as f:
+                upload_res = requests.post(
+                    f"https://upload{server}.gofile.io/uploadFile",
+                    files={"file": (f"{message.from_user.id}.mp4", f, "video/mp4")},
+                    timeout=300
+                )
+
+            upload_data = upload_res.json()
+            if upload_data.get("status") == "ok":
+                link = upload_data["data"]["downloadPage"]
+                file_size = os.path.getsize(mp4_file) // (1024 * 1024)
+                bot.edit_message_text(
+                    f"✅ Done!\n\n"
+                    f"🎬 MP4 ready!\n"
+                    f"🔗 {link}\n\n"
+                    f"📦 Size: {file_size}MB\n"
+                    f"⚠️ Link expires after inactivity",
+                    message.chat.id, status_msg.message_id
+                )
+            else:
+                bot.edit_message_text(
+                    f"❌ Upload failed: {upload_data}",
+                    message.chat.id, status_msg.message_id
+                )
+
+        except subprocess.TimeoutExpired:
+            bot.edit_message_text("❌ Timed out!", message.chat.id, status_msg.message_id)
+        except Exception as e:
+            print(f"Converter error: {e}")
+            bot.edit_message_text(f"❌ Error: {str(e)}", message.chat.id, status_msg.message_id)
+        finally:
+            for f in [mkv_file, mp4_file]:
+                if os.path.exists(f):
+                    os.remove(f)
+
+    threading.Thread(target=process, daemon=True).start()
 
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
