@@ -33,11 +33,12 @@ def load_data():
     {int(k): v for k, v in data.get("couples", {}).items()},
     data.get("luck", {}),
     {int(k): v for k, v in data.get("group_names", {}).items()},
-    data.get("command_stats", {})
+    data.get("command_stats", {}),
+    set(data.get("unique_users", []))
 )
         except:
             pass
-    return {}, {}, {}, {}, {}
+    return {}, {}, {}, {}, {}, set()
     
 def save_data():
     with open(DATA_FILE, "w") as f:
@@ -46,12 +47,14 @@ def save_data():
             "couples": {str(k): v for k, v in couple_history.items()},
             "luck": luck_history,
             "group_names": {str(k): v for k, v in group_names.items()},
-            "command_stats": command_stats
+            "command_stats": command_stats,
+            "unique_users": list(unique_users)
         }, f)
 
 # --- Load existing data on startup ---
-group_members, couple_history, luck_history, group_names, command_stats = load_data()
+group_members, couple_history, luck_history, group_names, command_stats, unique_users = load_data()
 print(f"Loaded {sum(len(v) for v in group_members.values())} members from file")
+print(f"Loaded {len(unique_users)} unique users from file")
 
 # --- Football Game State ---
 football_games = {}
@@ -257,8 +260,10 @@ horoscope_cache = {}
 stream_data = {}
 
 # --- Track command usage ---
-def track_command(cmd):
+def track_command(cmd, user_id=None):
     command_stats[cmd] = command_stats.get(cmd, 0) + 1
+    if user_id is not None:
+        unique_users.add(user_id)
     save_data()
 
 # ============================================================
@@ -512,7 +517,7 @@ def advance_tournament(chat_id):
         elif len(winners) == 2:
             final_match = game["matches"][1]
             final_ids = {final_match["p1"]["id"], final_match["p2"]["id"]}
-            runner_up = next(p for p in players if p["id"] in final_ids and p["id"] != winners[1]["id"])
+         runner_up = next(p for p in players if p["id"] in final_ids and p["id"] != winners[1]["id"])
             announce_champion(chat_id, winners[1], runner_up)
 
     elif len(players) == 4:
@@ -554,6 +559,7 @@ def cancel_game(chat_id):
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    track_command("start", message.from_user.id)
     owner_extra = ""
     if message.from_user.id == OWNER_ID:
         owner_extra = "\n\n🛠️ *Owner Commands:*\n📢 /broadcast — Send announcement to all groups\n📋 /mygroups — List all active groups"
@@ -575,13 +581,14 @@ def handle_start(message):
     )
     if message.chat.type == 'private':
         handle_stream(message)
+   
 
 @bot.message_handler(commands=['couple'])
 def handle_couple(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
-    track_command("couple")
+    track_command("couple", message.from_user.id)
 
     chat_id = message.chat.id
     current_time = time.time()
@@ -637,7 +644,7 @@ def handle_breakup(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
-    track_command("breakup")
+    track_command("breakup", message.from_user.id)
 
     sender = get_username(message.from_user)
     chat_id = message.chat.id
@@ -670,15 +677,15 @@ def handle_gettingbored(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
-    track_command("gettingbored")
+    track_command("gettingbored", message.from_user.id)
 
     sender = get_username(message.from_user)
     suggestion = random.choice(BOREDOM_SUGGESTIONS)
     bot.send_message(message.chat.id, f"Understand {sender}, not your fault. People here are boring 😌\n\n{suggestion}")
 
 @bot.message_handler(commands=['horoscope'])
-def handle_horoscope(message):
-    track_command("horoscope")
+def handle_horoscope(message):  
+track_command("horoscope", message.from_user.id)
 
     markup = types.InlineKeyboardMarkup()
     markup.row(
@@ -748,8 +755,83 @@ def handle_stats(message):
 
     total = sum(command_stats.values())
     text += f"\n🔢 Total commands used: {total}"
+    text += f"\n👤 Unique users: {len(unique_users)}"
 
     bot.send_message(message.chat.id, text)
+
+@bot.message_handler(commands=['usercount'])
+def handle_usercount(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        return
+    bot.reply_to(message, f"👤 Total unique users who have used the bot: {len(unique_users)}")
+
+# --- Cookies converter: Netscape cookies.txt -> JSON ---
+awaiting_cookies = set()  # user_ids currently expected to send a cookies file
+
+def parse_netscape_cookies(text):
+    cookies = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) != 7:
+            continue
+        domain, include_sub, path, secure, expiry, name, value = parts
+        cookies.append({
+            "domain": domain,
+            "name": name,
+            "value": value,
+            "path": path,
+            "secure": secure.upper() == "TRUE",
+            "httpOnly": False,
+            "expirationDate": int(expiry) if expiry.isdigit() else None
+        })
+    return cookies
+
+@bot.message_handler(commands=['cookies'])
+def handle_cookies_command(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ This command is only for the bot owner!")
+        return
+    track_command("cookies", message.from_user.id)
+    awaiting_cookies.add(message.from_user.id)
+    bot.reply_to(
+        message,
+        "🍪 Please send your *cookies.txt* file (Netscape format) now.\n"
+        "I'll convert it to JSON for you.",
+        parse_mode='Markdown'
+    )
+
+
+@bot.message_handler(content_types=['document'], func=lambda m: m.from_user.id in awaiting_cookies)
+def handle_cookies_file(message):
+    user_id = message.from_user.id
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        text = downloaded.decode('utf-8', errors='ignore')
+
+        cookies_json = parse_netscape_cookies(text)
+        if not cookies_json:
+            bot.reply_to(message, "❌ Couldn't parse any cookies. Make sure it's a valid Netscape cookies.txt file.")
+            awaiting_cookies.discard(user_id)
+            return
+
+        json_text = json.dumps(cookies_json, indent=2)
+        json_bytes = json_text.encode('utf-8')
+
+        bot.send_document(
+            message.chat.id,
+            (f"cookies_{user_id}.json", json_bytes),
+            caption=f"✅ Converted! {len(cookies_json)} cookies found."
+        )
+    except Exception as e:
+        print(f"Cookie conversion error: {e}")
+        bot.reply_to(message, "❌ Failed to convert cookies. Please make sure the file is a valid cookies.txt and try again.")
+    finally:
+        awaiting_cookies.discard(user_id)
 
 @bot.message_handler(commands=['broadcast'])
 def handle_broadcast(message):
@@ -824,7 +906,7 @@ def handle_liststreams(message):
 
 @bot.message_handler(commands=['stream'])
 def handle_stream(message):
-    track_command("stream")
+    track_command("stream", message.from_user.id)
 
     if not stream_data:
         bot.reply_to(message, "⚠️ No streams are currently active. Check back later!")
@@ -867,7 +949,7 @@ def handle_stream(message):
 
 @bot.message_handler(commands=['luck'])
 def handle_luck(message):
-    track_command("luck")
+    track_command("luck", message.from_user.id)
 
     user_id = str(message.from_user.id)
     username = get_username(message.from_user)
@@ -893,14 +975,13 @@ def handle_expose(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
-    track_command("expose")
+    track_command("expose", message.from_user.id)
 
     parts = message.text.split()
     if len(parts) < 2:
         bot.reply_to(message, "❌ Usage: /expose @username")
         return
-
-    target = parts[1]
+target = parts[1]
     if not target.startswith("@"):
         target = f"@{target}"
 
@@ -926,7 +1007,7 @@ def handle_football(message):
     if message.chat.type not in ['group', 'supergroup']:
         bot.reply_to(message, "❌ This command only works in group chats!")
         return
-    track_command("football")
+    track_command("football", message.from_user.id)
 
     chat_id = message.chat.id
 
@@ -1096,8 +1177,7 @@ def handle_callback(call):
         defender = get_defender(match)
         if defender["id"] in match["choices"]:
             process_round(chat_id)
-
-    elif data.startswith("horo_"):
+elif data.startswith("horo_"):
         parts = data.split("_")
         user_id = int(parts[1])
         sign = parts[2]
