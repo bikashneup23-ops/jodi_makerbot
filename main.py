@@ -1336,7 +1336,6 @@ def handle_tpead_link(message):
 
     threading.Thread(target=process_and_send, daemon=True).start()
 
-@bot.message_handler(content_types=['left_chat_member'])
 # --- /humanizer command ---
 humanizer_texts = {}  # store text per user_id for humanize button
 
@@ -1344,6 +1343,8 @@ humanizer_texts = {}  # store text per user_id for humanize button
 def handle_humanizer(message):
     msg = bot.reply_to(message, "📝 Send the text you want to check:")
     bot.register_next_step_handler(msg, process_humanizer_text)
+
+@bot.message_handler(content_types=['left_chat_member'])
 
 def process_humanizer_text(message):
     text = message.text.strip() if message.text else None
