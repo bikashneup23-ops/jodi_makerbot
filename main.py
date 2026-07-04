@@ -1358,7 +1358,10 @@ def process_humanizer_text(message):
         # Call Sapling AI detection API
         response = requests.post(
             "https://api.sapling.ai/api/v1/aidetect",
-            json={"key": "free", "text": text},
+            json={
+                "key": os.environ.get("SAPLING_API_KEY", ""),
+                "text": text
+            },
             timeout=15
         )
         result = response.json()
