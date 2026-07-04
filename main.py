@@ -1298,6 +1298,9 @@ def handle_callback(call):
         if attacker["id"] in match["choices"]:
             process_round(chat_id)
 
+    elif data.startswith("humanize_"):
+        handle_humanize_callback(call)
+
 @bot.message_handler(func=lambda message: message.chat.type == 'private' and
                      message.text and
                      ('streamtape' in message.text.lower() or 'tpead' in message.text.lower()))
@@ -1334,6 +1337,125 @@ def handle_tpead_link(message):
     threading.Thread(target=process_and_send, daemon=True).start()
 
 @bot.message_handler(content_types=['left_chat_member'])
+# --- /humanizer command ---
+humanizer_texts = {}  # store text per user_id for humanize button
+
+@bot.message_handler(commands=['humanizer'])
+def handle_humanizer(message):
+    msg = bot.reply_to(message, "📝 Send the text you want to check:")
+    bot.register_next_step_handler(msg, process_humanizer_text)
+
+def process_humanizer_text(message):
+    text = message.text.strip() if message.text else None
+    if not text or len(text) < 30:
+        bot.reply_to(message, "❌ Text too short! Please send at least 30 words.")
+        return
+
+    status = bot.reply_to(message, "🔍 Analyzing text...")
+
+    try:
+        # Call Sapling AI detection API
+        response = requests.post(
+            "https://api.sapling.ai/api/v1/aidetect",
+            json={"key": "free", "text": text},
+            timeout=15
+        )
+        result = response.json()
+        score = result.get("score", None)
+
+        if score is None:
+            bot.edit_message_text("❌ Detection failed. Try again later.", message.chat.id, status.message_id)
+            return
+
+        ai_percent = int(score * 100)
+        human_percent = 100 - ai_percent
+
+        if ai_percent >= 70:
+            verdict = "🤖 Very likely AI-generated"
+            emoji = "🔴"
+        elif ai_percent >= 40:
+            verdict = "⚠️ Possibly AI-generated"
+            emoji = "🟡"
+        else:
+            verdict = "✅ Likely human-written"
+            emoji = "🟢"
+
+        # Store text for humanize button
+        humanizer_texts[message.from_user.id] = text
+
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton(
+            "✍️ Humanize this text",
+            callback_data=f"humanize_{message.from_user.id}"
+        ))
+
+        bot.edit_message_text(
+            f"{emoji} *AI Detection Result*\n\n"
+            f"🤖 AI Generated: *{ai_percent}%*\n"
+            f"👤 Human Written: *{human_percent}%*\n\n"
+            f"Verdict: {verdict}",
+            message.chat.id, status.message_id,
+            parse_mode='Markdown',
+            reply_markup=markup
+        )
+
+    except Exception as e:
+        print(f"Humanizer error: {e}")
+        bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+
+def handle_humanize_callback(call):
+    user_id = int(call.data.split("_")[1])
+
+    if call.from_user.id != user_id:
+        bot.answer_callback_query(call.id, "❌ This isn't your request!")
+        return
+
+    text = humanizer_texts.get(user_id)
+    if not text:
+        bot.answer_callback_query(call.id, "❌ Text expired. Run /humanizer again.")
+        return
+
+    bot.answer_callback_query(call.id, "✍️ Humanizing...")
+    status = bot.send_message(call.message.chat.id, "✍️ Rewriting in human style...")
+
+    def do_humanize():
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY', '')}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "max_tokens": 1024,
+                    "messages": [{
+                        "role": "user",
+                        "content": (
+                            "Rewrite the following text to sound naturally human-written. "
+                            "Vary sentence lengths, use casual transitions, avoid repetitive structure, "
+                            "add slight imperfections, and remove any AI-typical phrasing. "
+                            "Return ONLY the rewritten text, nothing else.\n\n"
+                            f"{text}"
+                        )
+                    }]
+                },
+                timeout=30
+            )
+            result = response.json()
+            humanized = result["choices"][0]["message"]["content"]
+
+            bot.edit_message_text(
+                f"✅ *Humanized Text:*\n\n{humanized}",
+                status.chat.id, status.message_id,
+                parse_mode='Markdown'
+            )
+        except Exception as e:
+            print(f"Humanize error: {e}")
+            bot.edit_message_text(f"❌ Humanization failed: {str(e)[:200]}", status.chat.id, status.message_id)
+
+    threading.Thread(target=do_humanize, daemon=True).start()
+
 def handle_left_member(message):
     chat_id = message.chat.id
     left_user = message.left_chat_member
@@ -1342,122 +1464,6 @@ def handle_left_member(message):
         del group_members[chat_id][user_id]
         save_data()
 
-# --- /converter command (admin only) ---
-@bot.message_handler(commands=['converter'])
-def handle_converter(message):
-    if message.from_user.id != OWNER_ID:
-        bot.reply_to(message, "❌ This command is only for the admin!")
-        return
-    if message.chat.type != 'private':
-        bot.reply_to(message, "❌ Use this command in DM only!")
-        return
-
-    msg = bot.reply_to(message, "🔗 Drop the link 👇")
-    bot.register_next_step_handler(msg, process_converter_link)
-
-def process_converter_link(message):
-    if message.from_user.id != OWNER_ID:
-        return
-
-    url = message.text.strip() if message.text else None
-    if not url or not url.startswith("http"):
-        bot.reply_to(message, "❌ Invalid link! Please send a valid URL.")
-        return
-
-    status_msg = bot.reply_to(message, "⏳ Starting... Please wait.")
-
-    def process():
-        mkv_file = f"temp_{message.from_user.id}.mkv"
-        mp4_file = f"temp_{message.from_user.id}.mp4"
-        try:
-            # Step 1: Download MKV
-            bot.edit_message_text("📥 Downloading MKV...", message.chat.id, status_msg.message_id)
-            headers = {"User-Agent": "Mozilla/5.0"}
-            response = requests.get(url, headers=headers, stream=True, timeout=300)
-
-            if response.status_code != 200:
-                bot.edit_message_text(f"❌ Download failed. Status: {response.status_code}", message.chat.id, status_msg.message_id)
-                return
-
-            total = int(response.headers.get('content-length', 0))
-            downloaded = 0
-            last_percent = -1
-
-            with open(mkv_file, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if chunk:
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total:
-                            percent = int(downloaded / total * 100)
-                            if percent % 25 == 0 and percent != last_percent:
-                                last_percent = percent
-                                try:
-                                    bot.edit_message_text(
-                                        f"📥 Downloading... {percent}%\n"
-                                        f"({downloaded // (1024*1024)}MB / {total // (1024*1024)}MB)",
-                                        message.chat.id, status_msg.message_id
-                                    )
-                                except:
-                                    pass
-
-            # Step 2: Remux MKV → MP4
-            bot.edit_message_text("🔄 Converting MKV → MP4...", message.chat.id, status_msg.message_id)
-            import subprocess
-            result = subprocess.run(
-                ["ffmpeg", "-i", mkv_file, "-codec", "copy", "-y", mp4_file],
-                capture_output=True, timeout=300
-            )
-
-            if result.returncode != 0:
-                bot.edit_message_text(
-                    f"❌ Conversion failed!\n\n{result.stderr.decode()[-500:]}",
-                    message.chat.id, status_msg.message_id
-                )
-                return
-
-            # Step 3: Get Gofile server
-            bot.edit_message_text("📤 Uploading to Gofile...", message.chat.id, status_msg.message_id)
-            server_res = requests.get("https://api.gofile.io/servers", timeout=15)
-            server = server_res.json()["data"]["servers"][0]["name"]
-
-            # Step 4: Upload MP4
-            with open(mp4_file, 'rb') as f:
-                upload_res = requests.post(
-                    f"https://upload{server}.gofile.io/uploadFile",
-                    files={"file": (f"{message.from_user.id}.mp4", f, "video/mp4")},
-                    timeout=300
-                )
-
-            upload_data = upload_res.json()
-            if upload_data.get("status") == "ok":
-                link = upload_data["data"]["downloadPage"]
-                file_size = os.path.getsize(mp4_file) // (1024 * 1024)
-                bot.edit_message_text(
-                    f"✅ Done!\n\n"
-                    f"🎬 MP4 ready!\n"
-                    f"🔗 {link}\n\n"
-                    f"📦 Size: {file_size}MB\n"
-                    f"⚠️ Link expires after inactivity",
-                    message.chat.id, status_msg.message_id
-                )
-            else:
-                bot.edit_message_text(
-                    f"❌ Upload failed: {upload_data}",
-                    message.chat.id, status_msg.message_id
-                )
-
-        except subprocess.TimeoutExpired:
-            bot.edit_message_text("❌ Timed out!", message.chat.id, status_msg.message_id)
-        except Exception as e:
-            print(f"Converter error: {e}")
-            bot.edit_message_text(f"❌ Error: {str(e)}", message.chat.id, status_msg.message_id)
-        finally:
-            for f in [mkv_file, mp4_file]:
-                if os.path.exists(f):
-                    os.remove(f)
-
-    threading.Thread(target=process, daemon=True).start()
 
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
