@@ -80,36 +80,6 @@ def get_save_image():
     base = get_base()
     return random.choice([f"{base}/save1.png", f"{base}/save2.png", f"{base}/save3.png"])
 
-# --- Extract tpead.net direct link ---
-def extract_tpead_link(url):
-    try:
-        import re
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
-            "Referer": "https://tpead.net/",
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-        response = requests.get(url, headers=headers, timeout=15)
-        html = response.text
-        print("HTML snippet:", html[html.find('norobotlink'):html.find('norobotlink')+300])
-
-        match = re.search(r"getElementById\('norobotlink'\)\.innerHTML = '//tpead\.net/get_vide' \+ \('(.+?)'\)\.substring\(1\)\.substring\(2\)", html)
-        if match:
-            suffix = match.group(1)[3:]
-            direct_url = "https://tpead.net/get_video" + suffix + "&stream=1"
-            return direct_url
-
-        match2 = re.search(r'id="norobotlink"[^>]*>([^<]+)<', html)
-        if match2:
-            path = match2.group(1).strip()
-            if path.startswith("//"):
-                path = "https:" + path
-            return path + "&stream=1"
-
-        return None
-    except Exception as e:
-        print(f"tpead extract error: {e}")
-        return None
 
 # --- Luck Ranges ---
 LUCK_RANGES = [
@@ -1298,41 +1268,6 @@ def handle_callback(call):
         if attacker["id"] in match["choices"]:
             process_round(chat_id)
 
-@bot.message_handler(func=lambda message: message.chat.type == 'private' and
-                     message.text and
-                     ('streamtape' in message.text.lower() or 'tpead' in message.text.lower()))
-def handle_tpead_link(message):
-    url = message.text.strip()
-    processing_msg = bot.reply_to(message, "⏳ Processing video... Please wait.")
-
-    def process_and_send():
-        direct_url = extract_tpead_link(url)
-        if not direct_url:
-            bot.edit_message_text(
-                "❌ Could not extract video. The link may have expired or is invalid.",
-                message.chat.id,
-                processing_msg.message_id
-            )
-            return
-        try:
-            bot.delete_message(message.chat.id, processing_msg.message_id)
-            bot.send_message(
-                message.chat.id,
-                f"🎬 *Video Ready!*\n\n"
-                f"`{direct_url}`\n\n"
-                f"📌 *How to play:*\n"
-                f"*VLC:* Media → Open Network Stream → paste link\n"
-                f"*NS Player:* Add URL → paste link\n"
-                f"*MX Player:* Stream → paste link\n\n"
-                f"⚠️ *Link expires in ~24 hours*",
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            print(f"Error sending URL: {e}")
-            bot.send_message(message.chat.id, "❌ Failed to process link. Try again.")
-
-    threading.Thread(target=process_and_send, daemon=True).start()
-
 # --- /humanizer command ---
 
 @bot.message_handler(commands=['humanizer'])
@@ -1438,9 +1373,14 @@ def process_malware_file(message):
 
             bot.edit_message_text("🔬 Scanning... Please wait.", message.chat.id, status.message_id)
 
-            # Poll for results (max 30 seconds)
-            for _ in range(10):
-                time.sleep(3)
+            # Poll for results (max 90 seconds)
+            for attempt in range(18):
+                time.sleep(5)
+                if attempt == 6:
+                    try:
+                        bot.edit_message_text("🔬 Still scanning... please wait.", message.chat.id, status.message_id)
+                    except:
+                        pass
                 result_resp = requests.get(
                     f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
                     headers={"x-apikey": vt_key},
