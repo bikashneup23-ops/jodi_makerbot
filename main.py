@@ -1298,9 +1298,6 @@ def handle_callback(call):
         if attacker["id"] in match["choices"]:
             process_round(chat_id)
 
-    elif data.startswith("humanize_"):
-        handle_humanize_callback(call)
-
 @bot.message_handler(func=lambda message: message.chat.type == 'private' and
                      message.text and
                      ('streamtape' in message.text.lower() or 'tpead' in message.text.lower()))
@@ -1337,7 +1334,6 @@ def handle_tpead_link(message):
     threading.Thread(target=process_and_send, daemon=True).start()
 
 # --- /humanizer command ---
-humanizer_texts = {}  # store text per user_id for humanize button
 
 @bot.message_handler(commands=['humanizer'])
 def handle_humanizer(message):
@@ -1384,81 +1380,108 @@ def process_humanizer_text(message):
             verdict = "✅ Likely human-written"
             emoji = "🟢"
 
-        # Store text for humanize button
-        humanizer_texts[message.from_user.id] = text
-
-        markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton(
-            "✍️ Humanize this text",
-            callback_data=f"humanize_{message.from_user.id}"
-        ))
-
         bot.edit_message_text(
             f"{emoji} *AI Detection Result*\n\n"
             f"🤖 AI Generated: *{ai_percent}%*\n"
             f"👤 Human Written: *{human_percent}%*\n\n"
             f"Verdict: {verdict}",
             message.chat.id, status.message_id,
-            parse_mode='Markdown',
-            reply_markup=markup
+            parse_mode='Markdown'
         )
 
     except Exception as e:
         print(f"Humanizer error: {e}")
         bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
 
-def handle_humanize_callback(call):
-    user_id = int(call.data.split("_")[1])
+# --- /malware command ---
+@bot.message_handler(commands=['malware'])
+def handle_malware(message):
+    msg = bot.reply_to(message, "📁 Send the file you want to scan (max 75MB):")
+    bot.register_next_step_handler(msg, process_malware_file)
 
-    if call.from_user.id != user_id:
-        bot.answer_callback_query(call.id, "❌ This isn't your request!")
+def process_malware_file(message):
+    if not message.document:
+        bot.reply_to(message, "❌ Please send a file, not text!")
         return
 
-    text = humanizer_texts.get(user_id)
-    if not text:
-        bot.answer_callback_query(call.id, "❌ Text expired. Run /humanizer again.")
+    file_size_mb = message.document.file_size / (1024 * 1024)
+    if file_size_mb > 32:
+        bot.reply_to(message, f"❌ File too large ({file_size_mb:.1f}MB). Max allowed: 32MB (VirusTotal free limit).")
         return
 
-    bot.answer_callback_query(call.id, "✍️ Humanizing...")
-    status = bot.send_message(call.message.chat.id, "✍️ Rewriting in human style...")
+    status = bot.reply_to(message, "⏳ Downloading file...")
 
-    def do_humanize():
+    def process():
         try:
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {os.environ.get('GROQ_API_KEY', '')}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": "llama-3.3-70b-versatile",
-                    "max_tokens": 1024,
-                    "messages": [{
-                        "role": "user",
-                        "content": (
-                            "Rewrite the following text to sound naturally human-written. "
-                            "Vary sentence lengths, use casual transitions, avoid repetitive structure, "
-                            "add slight imperfections, and remove any AI-typical phrasing. "
-                            "Return ONLY the rewritten text, nothing else.\n\n"
-                            f"{text}"
-                        )
-                    }]
-                },
-                timeout=30
-            )
-            result = response.json()
-            humanized = result["choices"][0]["message"]["content"]
+            # Download file from Telegram
+            file_info = bot.get_file(message.document.file_id)
+            file_path = file_info.file_path
+            file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+            file_data = requests.get(file_url, timeout=60).content
 
-            bot.edit_message_text(
-                f"✅ *Humanized Text:*\n\n{humanized}",
-                status.chat.id, status.message_id,
-                parse_mode='Markdown'
+            bot.edit_message_text("🔍 Uploading to VirusTotal...", message.chat.id, status.message_id)
+
+            # Upload to VirusTotal
+            vt_key = os.environ.get("VIRUSTOTAL_API_KEY", "")
+            upload_resp = requests.post(
+                "https://www.virustotal.com/api/v3/files",
+                headers={"x-apikey": vt_key},
+                files={"file": (message.document.file_name, file_data)},
+                timeout=60
             )
+            upload_data = upload_resp.json()
+            analysis_id = upload_data.get("data", {}).get("id")
+
+            if not analysis_id:
+                bot.edit_message_text("❌ Upload failed. Try again.", message.chat.id, status.message_id)
+                return
+
+            bot.edit_message_text("🔬 Scanning... Please wait.", message.chat.id, status.message_id)
+
+            # Poll for results (max 30 seconds)
+            for _ in range(10):
+                time.sleep(3)
+                result_resp = requests.get(
+                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                    headers={"x-apikey": vt_key},
+                    timeout=15
+                )
+                result = result_resp.json()
+                status_vt = result.get("data", {}).get("attributes", {}).get("status")
+
+                if status_vt == "completed":
+                    stats = result["data"]["attributes"]["stats"]
+                    malicious = stats.get("malicious", 0)
+                    suspicious = stats.get("suspicious", 0)
+                    undetected = stats.get("undetected", 0)
+                    total = malicious + suspicious + undetected + stats.get("harmless", 0)
+
+                    if malicious > 0:
+                        verdict = "🔴 *MALWARE DETECTED!*"
+                    elif suspicious > 0:
+                        verdict = "🟡 *Suspicious file*"
+                    else:
+                        verdict = "🟢 *File is clean*"
+
+                    bot.edit_message_text(
+                        f"{verdict}\n\n"
+                        f"📄 File: `{message.document.file_name}`\n"
+                        f"📦 Size: {file_size_mb:.1f}MB\n\n"
+                        f"🔴 Malicious: {malicious}/{total}\n"
+                        f"🟡 Suspicious: {suspicious}/{total}\n"
+                        f"✅ Clean: {undetected}/{total}",
+                        message.chat.id, status.message_id,
+                        parse_mode='Markdown'
+                    )
+                    return
+
+            bot.edit_message_text("⏰ Scan timed out. Try again later.", message.chat.id, status.message_id)
+
         except Exception as e:
-            print(f"Humanize error: {e}")
-            bot.edit_message_text(f"❌ Humanization failed: {str(e)[:200]}", status.chat.id, status.message_id)
+            print(f"Malware scan error: {e}")
+            bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
 
-    threading.Thread(target=do_humanize, daemon=True).start()
+    threading.Thread(target=process, daemon=True).start()
 
 def handle_left_member(message):
     chat_id = message.chat.id
