@@ -1516,9 +1516,7 @@ def process_translate(message):
             translated = GoogleTranslator(source='auto', target='en').translate(text)
 
             bot.edit_message_text(
-                f"🌐 *Translation*\n\n"
-                f"📝 Original:\n{text}\n\n"
-                f"🇬🇧 English:\n{translated}",
+                f"🇬🇧 *English Translation:*\n\n{translated}",
                 message.chat.id, status.message_id,
                 parse_mode='Markdown'
             )
