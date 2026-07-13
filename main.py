@@ -1331,97 +1331,202 @@ def process_humanizer_text(message):
 # --- /malware command ---
 @bot.message_handler(commands=['malware'])
 def handle_malware(message):
-    msg = bot.reply_to(message, "📁 Send the file you want to scan (max 75MB):")
-    bot.register_next_step_handler(msg, process_malware_file)
+    msg = bot.reply_to(message, "📁 Send a file (max 20MB) or paste a URL to scan:")
+    bot.register_next_step_handler(msg, process_malware_input)
 
-def process_malware_file(message):
-    if not message.document:
-        bot.reply_to(message, "❌ Please send a file, not text!")
-        return
+def process_malware_input(message):
+    vt_key = os.environ.get("VIRUSTOTAL_API_KEY", "")
 
-    file_size_mb = message.document.file_size / (1024 * 1024)
-    if file_size_mb > 32:
-        bot.reply_to(message, f"❌ File too large ({file_size_mb:.1f}MB). Max allowed: 32MB (VirusTotal free limit).")
-        return
+    # --- URL scan ---
+    if message.text and (message.text.startswith("http://") or message.text.startswith("https://")):
+        url = message.text.strip()
+        status = bot.reply_to(message, "🔍 Submitting URL to VirusTotal...")
 
-    status = bot.reply_to(message, "⏳ Downloading file...")
-
-    def process():
-        try:
-            # Download file from Telegram
-            file_info = bot.get_file(message.document.file_id)
-            file_path = file_info.file_path
-            file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
-            file_data = requests.get(file_url, timeout=60).content
-
-            bot.edit_message_text("🔍 Uploading to VirusTotal...", message.chat.id, status.message_id)
-
-            # Upload to VirusTotal
-            vt_key = os.environ.get("VIRUSTOTAL_API_KEY", "")
-            upload_resp = requests.post(
-                "https://www.virustotal.com/api/v3/files",
-                headers={"x-apikey": vt_key},
-                files={"file": (message.document.file_name, file_data)},
-                timeout=60
-            )
-            upload_data = upload_resp.json()
-            analysis_id = upload_data.get("data", {}).get("id")
-
-            if not analysis_id:
-                bot.edit_message_text("❌ Upload failed. Try again.", message.chat.id, status.message_id)
-                return
-
-            bot.edit_message_text("🔬 Scanning... Please wait.", message.chat.id, status.message_id)
-
-            # Poll for results (max 90 seconds)
-            for attempt in range(18):
-                time.sleep(5)
-                if attempt == 6:
-                    try:
-                        bot.edit_message_text("🔬 Still scanning... please wait.", message.chat.id, status.message_id)
-                    except:
-                        pass
-                result_resp = requests.get(
-                    f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+        def scan_url():
+            try:
+                import base64
+                # Submit URL
+                resp = requests.post(
+                    "https://www.virustotal.com/api/v3/urls",
                     headers={"x-apikey": vt_key},
+                    data={"url": url},
                     timeout=15
                 )
-                result = result_resp.json()
-                status_vt = result.get("data", {}).get("attributes", {}).get("status")
+                analysis_id = resp.json().get("data", {}).get("id")
 
-                if status_vt == "completed":
-                    stats = result["data"]["attributes"]["stats"]
-                    malicious = stats.get("malicious", 0)
-                    suspicious = stats.get("suspicious", 0)
-                    undetected = stats.get("undetected", 0)
-                    total = malicious + suspicious + undetected + stats.get("harmless", 0)
-
-                    if malicious > 0:
-                        verdict = "🔴 *MALWARE DETECTED!*"
-                    elif suspicious > 0:
-                        verdict = "🟡 *Suspicious file*"
-                    else:
-                        verdict = "🟢 *File is clean*"
-
-                    bot.edit_message_text(
-                        f"{verdict}\n\n"
-                        f"📄 File: `{message.document.file_name}`\n"
-                        f"📦 Size: {file_size_mb:.1f}MB\n\n"
-                        f"🔴 Malicious: {malicious}/{total}\n"
-                        f"🟡 Suspicious: {suspicious}/{total}\n"
-                        f"✅ Clean: {undetected}/{total}",
-                        message.chat.id, status.message_id,
-                        parse_mode='Markdown'
-                    )
+                if not analysis_id:
+                    bot.edit_message_text("❌ Submission failed. Try again.", message.chat.id, status.message_id)
                     return
 
-            bot.edit_message_text("⏰ Scan timed out. Try again later.", message.chat.id, status.message_id)
+                bot.edit_message_text("🔬 Scanning URL... Please wait.", message.chat.id, status.message_id)
 
+                # Poll for results (max 90 seconds)
+                for attempt in range(18):
+                    time.sleep(5)
+                    if attempt == 6:
+                        try:
+                            bot.edit_message_text("🔬 Still scanning... please wait.", message.chat.id, status.message_id)
+                        except:
+                            pass
+                    result_resp = requests.get(
+                        f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                        headers={"x-apikey": vt_key},
+                        timeout=15
+                    )
+                    result = result_resp.json()
+                    status_vt = result.get("data", {}).get("attributes", {}).get("status")
+
+                    if status_vt == "completed":
+                        stats = result["data"]["attributes"]["stats"]
+                        malicious = stats.get("malicious", 0)
+                        suspicious = stats.get("suspicious", 0)
+                        harmless = stats.get("harmless", 0)
+                        undetected = stats.get("undetected", 0)
+                        total = malicious + suspicious + harmless + undetected
+
+                        if malicious > 0:
+                            verdict = "🔴 *Malicious URL detected!*"
+                        elif suspicious > 0:
+                            verdict = "🟡 *Suspicious URL*"
+                        else:
+                            verdict = "🟢 *URL is safe*"
+
+                        bot.edit_message_text(
+                            f"{verdict}\n\n"
+                            f"🌐 URL: `{url}`\n\n"
+                            f"🔴 Malicious: {malicious}/{total}\n"
+                            f"🟡 Suspicious: {suspicious}/{total}\n"
+                            f"✅ Clean: {harmless}/{total}",
+                            message.chat.id, status.message_id,
+                            parse_mode='Markdown'
+                        )
+                        return
+
+                bot.edit_message_text("⏰ Scan timed out. Try again later.", message.chat.id, status.message_id)
+
+            except Exception as e:
+                print(f"URL scan error: {e}")
+                bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+
+        threading.Thread(target=scan_url, daemon=True).start()
+
+    # --- File scan ---
+    elif message.document:
+        file_size_mb = message.document.file_size / (1024 * 1024)
+        if file_size_mb > 20:
+            bot.reply_to(message, f"❌ File too large ({file_size_mb:.1f}MB). Max allowed: 20MB.")
+            return
+
+        status = bot.reply_to(message, "⏳ Downloading file...")
+
+        def scan_file():
+            try:
+                file_info = bot.get_file(message.document.file_id)
+                file_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+                file_data = requests.get(file_url, timeout=60).content
+
+                bot.edit_message_text("🔍 Uploading to VirusTotal...", message.chat.id, status.message_id)
+
+                upload_resp = requests.post(
+                    "https://www.virustotal.com/api/v3/files",
+                    headers={"x-apikey": vt_key},
+                    files={"file": (message.document.file_name, file_data)},
+                    timeout=60
+                )
+                analysis_id = upload_resp.json().get("data", {}).get("id")
+
+                if not analysis_id:
+                    bot.edit_message_text("❌ Upload failed. Try again.", message.chat.id, status.message_id)
+                    return
+
+                bot.edit_message_text("🔬 Scanning... Please wait.", message.chat.id, status.message_id)
+
+                for attempt in range(18):
+                    time.sleep(5)
+                    if attempt == 6:
+                        try:
+                            bot.edit_message_text("🔬 Still scanning... please wait.", message.chat.id, status.message_id)
+                        except:
+                            pass
+                    result_resp = requests.get(
+                        f"https://www.virustotal.com/api/v3/analyses/{analysis_id}",
+                        headers={"x-apikey": vt_key},
+                        timeout=15
+                    )
+                    result = result_resp.json()
+                    status_vt = result.get("data", {}).get("attributes", {}).get("status")
+
+                    if status_vt == "completed":
+                        stats = result["data"]["attributes"]["stats"]
+                        malicious = stats.get("malicious", 0)
+                        suspicious = stats.get("suspicious", 0)
+                        undetected = stats.get("undetected", 0)
+                        total = malicious + suspicious + undetected + stats.get("harmless", 0)
+
+                        if malicious > 0:
+                            verdict = "🔴 *MALWARE DETECTED!*"
+                        elif suspicious > 0:
+                            verdict = "🟡 *Suspicious file*"
+                        else:
+                            verdict = "🟢 *File is clean*"
+
+                        bot.edit_message_text(
+                            f"{verdict}\n\n"
+                            f"📄 File: `{message.document.file_name}`\n"
+                            f"📦 Size: {file_size_mb:.1f}MB\n\n"
+                            f"🔴 Malicious: {malicious}/{total}\n"
+                            f"🟡 Suspicious: {suspicious}/{total}\n"
+                            f"✅ Clean: {undetected}/{total}",
+                            message.chat.id, status.message_id,
+                            parse_mode='Markdown'
+                        )
+                        return
+
+                bot.edit_message_text("⏰ Scan timed out. Try again later.", message.chat.id, status.message_id)
+
+            except Exception as e:
+                print(f"Malware scan error: {e}")
+                bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+
+        threading.Thread(target=scan_file, daemon=True).start()
+
+    else:
+        bot.reply_to(message, "❌ Please send a file or a valid URL starting with http:// or https://")
+
+# --- /translate command ---
+@bot.message_handler(commands=['translate'])
+def handle_translate(message):
+    msg = bot.reply_to(message, "🌐 Send the text you want to translate to English:")
+    bot.register_next_step_handler(msg, process_translate)
+
+def process_translate(message):
+    text = message.text.strip() if message.text else None
+    if not text:
+        bot.reply_to(message, "❌ Please send a valid text message.")
+        return
+
+    status = bot.reply_to(message, "🔄 Translating...")
+
+    def do_translate():
+        try:
+            from deep_translator import GoogleTranslator, single_detection
+            from deep_translator import GoogleTranslator
+
+            # Auto-detect language and translate to English
+            translated = GoogleTranslator(source='auto', target='en').translate(text)
+
+            bot.edit_message_text(
+                f"🌐 *Translation*\n\n"
+                f"📝 Original:\n{text}\n\n"
+                f"🇬🇧 English:\n{translated}",
+                message.chat.id, status.message_id,
+                parse_mode='Markdown'
+            )
         except Exception as e:
-            print(f"Malware scan error: {e}")
-            bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+            print(f"Translate error: {e}")
+            bot.edit_message_text(f"❌ Translation failed: {str(e)[:200]}", message.chat.id, status.message_id)
 
-    threading.Thread(target=process, daemon=True).start()
+    threading.Thread(target=do_translate, daemon=True).start()
 
 def handle_left_member(message):
     chat_id = message.chat.id
