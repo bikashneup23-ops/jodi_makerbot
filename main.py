@@ -1272,6 +1272,7 @@ def handle_callback(call):
 
 @bot.message_handler(commands=['humanizer'])
 def handle_humanizer(message):
+    track_command("humanizer", message.from_user.id)
     msg = bot.reply_to(message, "📝 Send the text you want to check:")
     bot.register_next_step_handler(msg, process_humanizer_text)
 
@@ -1280,57 +1281,64 @@ def handle_humanizer(message):
 def process_humanizer_text(message):
     text = message.text.strip() if message.text else None
     if not text or len(text) < 30:
-        bot.reply_to(message, "❌ Text too short! Please send at least 30 words.")
+        bot.reply_to(message, "❌ Text too short! Please send at least 30 characters.")
         return
 
     status = bot.reply_to(message, "🔍 Analyzing text...")
 
-    try:
-        # Call Sapling AI detection API
-        response = requests.post(
-            "https://api.sapling.ai/api/v1/aidetect",
-            json={
-                "key": os.environ.get("SAPLING_API_KEY", ""),
-                "text": text
-            },
-            timeout=15
-        )
-        result = response.json()
-        score = result.get("score", None)
+    def do_detect():
+        try:
+            sapling_key = os.environ.get("SAPLING_API_KEY", "")
+            if not sapling_key:
+                bot.edit_message_text("❌ API key not configured.", message.chat.id, status.message_id)
+                return
 
-        if score is None:
-            bot.edit_message_text("❌ Detection failed. Try again later.", message.chat.id, status.message_id)
-            return
+            response = requests.post(
+                "https://api.sapling.ai/api/v1/aidetect",
+                json={"key": sapling_key, "text": text},
+                timeout=15
+            )
+            print(f"Sapling status: {response.status_code}, body: {response.text[:300]}")
+            result = response.json()
+            score = result.get("score", None)
 
-        ai_percent = int(score * 100)
-        human_percent = 100 - ai_percent
+            if score is None:
+                error_msg = result.get("msg", result.get("message", "Unknown error"))
+                bot.edit_message_text(f"❌ Detection failed: {error_msg}", message.chat.id, status.message_id)
+                return
 
-        if ai_percent >= 70:
-            verdict = "🤖 Very likely AI-generated"
-            emoji = "🔴"
-        elif ai_percent >= 40:
-            verdict = "⚠️ Possibly AI-generated"
-            emoji = "🟡"
-        else:
-            verdict = "✅ Likely human-written"
-            emoji = "🟢"
+            ai_percent = int(score * 100)
+            human_percent = 100 - ai_percent
 
-        bot.edit_message_text(
-            f"{emoji} *AI Detection Result*\n\n"
-            f"🤖 AI Generated: *{ai_percent}%*\n"
-            f"👤 Human Written: *{human_percent}%*\n\n"
-            f"Verdict: {verdict}",
-            message.chat.id, status.message_id,
-            parse_mode='Markdown'
-        )
+            if ai_percent >= 70:
+                verdict = "🤖 Very likely AI-generated"
+                emoji = "🔴"
+            elif ai_percent >= 40:
+                verdict = "⚠️ Possibly AI-generated"
+                emoji = "🟡"
+            else:
+                verdict = "✅ Likely human-written"
+                emoji = "🟢"
 
-    except Exception as e:
-        print(f"Humanizer error: {e}")
-        bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+            bot.edit_message_text(
+                f"{emoji} *AI Detection Result*\n\n"
+                f"🤖 AI Generated: *{ai_percent}%*\n"
+                f"👤 Human Written: *{human_percent}%*\n\n"
+                f"Verdict: {verdict}",
+                message.chat.id, status.message_id,
+                parse_mode='Markdown'
+            )
+
+        except Exception as e:
+            print(f"Humanizer error: {e}")
+            bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+
+    threading.Thread(target=do_detect, daemon=True).start()
 
 # --- /malware command ---
 @bot.message_handler(commands=['malware'])
 def handle_malware(message):
+    track_command("malware", message.from_user.id)
     msg = bot.reply_to(message, "📁 Send a file (max 20MB) or paste a URL to scan:")
     bot.register_next_step_handler(msg, process_malware_input)
 
@@ -1496,6 +1504,7 @@ def process_malware_input(message):
 # --- /translate command ---
 @bot.message_handler(commands=['translate'])
 def handle_translate(message):
+    track_command("translate", message.from_user.id)
     msg = bot.reply_to(message, "🌐 Send the text you want to translate to English:")
     bot.register_next_step_handler(msg, process_translate)
 
@@ -1525,6 +1534,182 @@ def process_translate(message):
             bot.edit_message_text(f"❌ Translation failed: {str(e)[:200]}", message.chat.id, status.message_id)
 
     threading.Thread(target=do_translate, daemon=True).start()
+
+# --- /plagiarism command ---
+@bot.message_handler(commands=['plagiarism'])
+def handle_plagiarism(message):
+    track_command("plagiarism", message.from_user.id)
+    msg = bot.reply_to(message, "📝 Send the text you want to check for plagiarism:")
+    bot.register_next_step_handler(msg, process_plagiarism)
+
+def process_plagiarism(message):
+    text = message.text.strip() if message.text else None
+    if not text or len(text) < 50:
+        bot.reply_to(message, "❌ Text too short! Please send at least 50 characters.")
+        return
+
+    status = bot.reply_to(message, "🔍 Analyzing text for plagiarism...")
+
+    def do_plagiarism():
+        try:
+            import difflib
+
+            google_api_key = os.environ.get("GOOGLE_API_KEY", "")
+            google_cse_id = os.environ.get("GOOGLE_CSE_ID", "")
+            groq_key = os.environ.get("GROQ_API_KEY", "")
+
+            if not google_api_key or not google_cse_id:
+                bot.edit_message_text("❌ Search API not configured.", message.chat.id, status.message_id)
+                return
+
+            # Split text into sentences for searching
+            sentences = [s.strip() for s in text.replace('!', '.').replace('?', '.').split('.') if len(s.strip()) > 30]
+            search_queries = sentences[:3]  # Search top 3 sentences
+
+            bot.edit_message_text("🌐 Searching online sources...", message.chat.id, status.message_id)
+
+            found_sources = []
+
+            for query in search_queries:
+                try:
+                    search_resp = requests.get(
+                        "https://www.googleapis.com/customsearch/v1",
+                        params={
+                            "key": google_api_key,
+                            "cx": google_cse_id,
+                            "q": f'"{query[:100]}"',
+                            "num": 3
+                        },
+                        timeout=15
+                    )
+                    items = search_resp.json().get("items", [])
+                    for item in items:
+                        url = item.get("link", "")
+                        title = item.get("title", "Unknown")
+                        snippet = item.get("snippet", "")
+                        # Check if already found this URL
+                        if not any(s["url"] == url for s in found_sources):
+                            # Calculate similarity
+                            similarity = difflib.SequenceMatcher(None, text.lower(), snippet.lower()).ratio()
+                            found_sources.append({
+                                "url": url,
+                                "title": title,
+                                "snippet": snippet,
+                                "similarity": similarity,
+                                "matching_query": query
+                            })
+                except Exception as e:
+                    print(f"Search error: {e}")
+                    continue
+
+            # Sort by similarity
+            found_sources.sort(key=lambda x: x["similarity"], reverse=True)
+            found_sources = found_sources[:5]  # Top 5 sources
+
+            if not found_sources:
+                bot.edit_message_text(
+                    "✅ *Plagiarism Check Complete*\n\n"
+                    "No matching sources found online.\n"
+                    "The text appears to be original.",
+                    message.chat.id, status.message_id,
+                    parse_mode='Markdown'
+                )
+                return
+
+            bot.edit_message_text("📊 Generating citations and report...", message.chat.id, status.message_id)
+
+            # Use Groq to generate citations and estimate plagiarism %
+            sources_summary = "\n".join([
+                f"- Title: {s['title']}\n  URL: {s['url']}\n  Snippet: {s['snippet'][:150]}"
+                for s in found_sources
+            ])
+
+            groq_resp = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "llama-3.3-70b-versatile",
+                    "max_tokens": 1500,
+                    "messages": [{
+                        "role": "user",
+                        "content": (
+                            f"You are a plagiarism detection assistant. Analyze this text against the found sources and generate a report.\n\n"
+                            f"TEXT TO CHECK:\n{text}\n\n"
+                            f"FOUND SOURCES:\n{sources_summary}\n\n"
+                            f"Generate a JSON response with this exact structure:\n"
+                            f'{{"plagiarism_percent": 0-100, "original_percent": 0-100, "confidence": "High/Medium/Low", '
+                            f'"sources": [{{"rank": 1, "title": "", "url": "", "similarity_percent": 0-100, '
+                            f'"match_type": "Exact/Near/Cited", "matching_text": "", '
+                            f'"apa": "", "mla": "", "ieee": ""}}], '
+                            f'"summary": ""}}}}\n\n'
+                            f"For citations use current year if date unknown. Return ONLY valid JSON, no extra text."
+                        )
+                    }]
+                },
+                timeout=30
+            )
+
+            groq_result = groq_resp.json()
+            raw = groq_result["choices"][0]["message"]["content"]
+            # Clean JSON
+            import re
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if not json_match:
+                raise Exception("Could not parse AI response")
+
+            report = json.loads(json_match.group())
+
+            # Build output message
+            plagiarism_pct = report.get("plagiarism_percent", 0)
+            original_pct = report.get("original_percent", 100)
+            confidence = report.get("confidence", "Medium")
+            summary = report.get("summary", "")
+            sources = report.get("sources", [])
+
+            if plagiarism_pct >= 70:
+                score_emoji = "🔴"
+            elif plagiarism_pct >= 30:
+                score_emoji = "🟡"
+            else:
+                score_emoji = "🟢"
+
+            output = f"{score_emoji} *Plagiarism Score: {plagiarism_pct}%*\n"
+            output += "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            if sources:
+                output += "📌 *Similar Sources*\n\n"
+                for i, src in enumerate(sources[:3], 1):
+                    output += f"*Source {i}*\n"
+                    output += f"• Similarity: {src.get('similarity_percent', 0)}%\n"
+                    output += f"• Match type: {src.get('match_type', 'Near')}\n"
+                    output += f"• Matching text: _{src.get('matching_text', 'N/A')[:100]}_\n"
+                    output += f"• URL: {src.get('url', 'N/A')}\n"
+                    output += f"• APA: `{src.get('apa', 'N/A')}`\n"
+                    output += f"• MLA: `{src.get('mla', 'N/A')}`\n"
+                    output += f"• IEEE: `{src.get('ieee', 'N/A')}`\n\n"
+
+            output += "━━━━━━━━━━━━━━━━━━━━━━\n"
+            output += f"📊 *Summary*\n\n"
+            output += f"• Original content: {original_pct}%\n"
+            output += f"• Possible plagiarism: {plagiarism_pct}%\n"
+            output += f"• Confidence: {confidence}\n"
+            if summary:
+                output += f"\n_{summary}_"
+
+            # Split if too long
+            if len(output) > 4000:
+                output = output[:3900] + "\n\n_...truncated due to length_"
+
+            bot.edit_message_text(output, message.chat.id, status.message_id, parse_mode='Markdown')
+
+        except Exception as e:
+            print(f"Plagiarism error: {e}")
+            bot.edit_message_text(f"❌ Error: {str(e)[:200]}", message.chat.id, status.message_id)
+
+    threading.Thread(target=do_plagiarism, daemon=True).start()
 
 def handle_left_member(message):
     chat_id = message.chat.id
