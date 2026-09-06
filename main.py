@@ -1796,7 +1796,17 @@ def auto_stream_watcher():
         first_run = False
         try:
             print("[WATCHER] Fetching events from embed.cx...")
-            resp = requests.get(EVENTS_API, timeout=15)
+            resp = requests.get(
+                EVENTS_API,
+                timeout=15,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                    "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Referer": "https://embed.cx/",
+                    "Origin": "https://embed.cx"
+                }
+            )
             print(f"[WATCHER] Response status: {resp.status_code}")
             data = resp.json()
             events = data.get("events", [])
