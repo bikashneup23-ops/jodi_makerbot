@@ -1802,7 +1802,9 @@ def auto_stream_watcher():
 
                 channel_id = get_channel_id(event)
 
-                if status in ("live", "scheduled") and embed_url:
+                print(f"[WATCHER] Event: {event.get('match')} | League: {event.get('league')} | Status: {status} | Target: {is_target_match(event)}")
+
+                if status in ("live", "scheduled","premier league", "inprogress", "ongoing", "started", "in_progress") and embed_url:
                     live_ids.add(event_id)
                     if event_id not in active_auto_streams:
                         stream_data[channel_id] = embed_url
@@ -1822,10 +1824,12 @@ def auto_stream_watcher():
 
         time.sleep(420)
 
+# --- Startup (runs with both Flask dev server and Gunicorn) ---
+set_webhook()
+threading.Thread(target=auto_stream_watcher, daemon=True).start()
+print("Bot started successfully.")
+
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
     print(f"RENDER_URL: {RENDER_URL}")
-    set_webhook()
-    threading.Thread(target=auto_stream_watcher, daemon=True).start()
-    print("Bot is starting in webhook mode...")
     app.run(host="0.0.0.0", port=PORT)
