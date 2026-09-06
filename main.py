@@ -1789,11 +1789,18 @@ def get_channel_id(event):
 
 def auto_stream_watcher():
     print("🔄 Auto stream watcher started...")
+    first_run = True
     while True:
+        if not first_run:
+            time.sleep(420)
+        first_run = False
         try:
+            print("[WATCHER] Fetching events from embed.cx...")
             resp = requests.get(EVENTS_API, timeout=15)
+            print(f"[WATCHER] Response status: {resp.status_code}")
             data = resp.json()
             events = data.get("events", [])
+            print(f"[WATCHER] Total events: {len(events)}")
 
             live_ids = set()
 
@@ -1826,8 +1833,6 @@ def auto_stream_watcher():
 
         except Exception as e:
             print(f"Auto stream watcher error: {e}")
-
-        time.sleep(420)
 
 # --- Startup (runs with both Flask dev server and Gunicorn) ---
 set_webhook()
