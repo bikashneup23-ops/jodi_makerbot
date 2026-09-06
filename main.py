@@ -1802,29 +1802,14 @@ def auto_stream_watcher():
 
                 channel_id = get_channel_id(event)
 
-                if status == "live" and embed_url:
+                if status in ("live", "scheduled") and embed_url:
                     live_ids.add(event_id)
                     if event_id not in active_auto_streams:
                         stream_data[channel_id] = embed_url
                         active_auto_streams[event_id] = channel_id
                         print(f"✅ Auto-set stream: {channel_id} → {embed_url}")
 
-                elif status == "scheduled" and embed_url:
-                    try:
-                        from datetime import timezone
-                        starts_at = event.get("starts_at", "")
-                        start_time = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
-                        now = datetime.now(timezone.utc)
-                        diff = (start_time - now).total_seconds()
-                        if 0 <= diff <= 120:
-                            live_ids.add(event_id)
-                            if event_id not in active_auto_streams:
-                                stream_data[channel_id] = embed_url
-                                active_auto_streams[event_id] = channel_id
-                                print(f"✅ Auto-set stream (starting): {channel_id} → {embed_url}")
-                    except Exception as e:
-                        print(f"Time parse error: {e}")
-
+            # Auto-clear ended streams
             ended_ids = [eid for eid in active_auto_streams if eid not in live_ids]
             for eid in ended_ids:
                 channel_id = active_auto_streams.pop(eid)
@@ -1835,7 +1820,7 @@ def auto_stream_watcher():
         except Exception as e:
             print(f"Auto stream watcher error: {e}")
 
-        time.sleep(60)
+        time.sleep(420)
 
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
