@@ -880,6 +880,67 @@ def handle_clearstream(message):
         bot.reply_to(message, f"❌ No stream found with id `{channel_id}`", parse_mode='Markdown')
 
 @bot.message_handler(commands=['liststreams'])
+@bot.message_handler(commands=['syncevents'])
+def handle_syncevents(message):
+    if message.from_user.id != OWNER_ID:
+        bot.reply_to(message, "❌ Owner only!")
+        return
+    msg = bot.reply_to(message, "📋 Paste the JSON from https://embed.cx/api/events:")
+    bot.register_next_step_handler(msg, process_syncevents)
+
+def process_syncevents(message):
+    if message.from_user.id != OWNER_ID:
+        return
+
+    try:
+        data = json.loads(message.text.strip())
+        events = data.get("events", [])
+
+        if not events:
+            bot.reply_to(message, "❌ No events found in the JSON.")
+            return
+
+        added = []
+        skipped = []
+
+        for event in events:
+            if not is_target_match(event):
+                skipped.append(event.get("match", "Unknown"))
+                continue
+
+            embed_url = event.get("embed_url", "")
+            if not embed_url:
+                continue
+
+            channel_id = get_channel_id(event)
+            stream_data[channel_id] = embed_url
+            added.append(f"✅ {event.get('match')} → `{channel_id}`")
+
+        if not added:
+            bot.reply_to(
+                message,
+                f"⚠️ No target matches found.\n\n"
+                f"Events in JSON: {len(events)}\n"
+                f"None matched your target teams (PL: Man City/Arsenal/Chelsea/Man Utd/Liverpool, La Liga: Real Madrid/Barcelona)"
+            )
+            return
+
+        STREAM_PAGE = "https://sportzyhub.pages.dev"
+        result = f"✅ *Synced {len(added)} stream(s)*\n\n"
+        for a in added:
+            result += f"{a}\n"
+        result += f"\n🌐 Access via:\n"
+        for channel_id in [a.split('`')[1] for a in added]:
+            result += f"`{STREAM_PAGE}/?id={channel_id}`\n"
+
+        bot.reply_to(message, result, parse_mode='Markdown')
+
+    except json.JSONDecodeError:
+        bot.reply_to(message, "❌ Invalid JSON! Make sure you copied the full response from embed.cx/api/events")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error: {str(e)[:200]}")
+
+@bot.message_handler(commands=['liststreams'])
 def handle_liststreams(message):
     if message.from_user.id != OWNER_ID:
         bot.reply_to(message, "❌ Owner only!")
