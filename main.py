@@ -39,7 +39,7 @@ def load_data():
         except:
             pass
     return {}, {}, {}, {}, {}, set()
-    
+
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump({
@@ -79,7 +79,6 @@ def get_goal_image():
 def get_save_image():
     base = get_base()
     return random.choice([f"{base}/save1.png", f"{base}/save2.png", f"{base}/save3.png"])
-
 
 # --- Luck Ranges ---
 LUCK_RANGES = [
@@ -228,6 +227,8 @@ used_expose = {}
 horoscope_cache = {}
 # --- Stream Data ---
 stream_data = {}
+# --- Cookies awaiting ---
+awaiting_cookies = set()
 
 # --- Track command usage ---
 def track_command(cmd, user_id=None):
@@ -735,17 +736,13 @@ def handle_usercount(message):
         return
     bot.reply_to(message, f"👤 Total unique users who have used the bot: {len(unique_users)}")
 
-
-# --- Cookies converter: Netscape cookies.txt -> JSON ---
-awaiting_cookies = set()  # user_ids currently expected to send a cookies file
-
+# --- Cookies converter ---
 def parse_netscape_cookies(text):
     cookies = []
     for raw_line in text.splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        # Telegram sometimes converts tabs to multiple spaces when pasted
         parts = line.split("\t")
         if len(parts) != 7:
             parts = line.split()
@@ -771,10 +768,8 @@ def send_cookies_json(message, text):
             return
 
         cookie_line = "; ".join(f"{c['name']}={c['value']}" for c in cookies_json)
-
         reply = f"✅ Converted! {len(cookies_json)} cookies found.\n\n`{cookie_line}`"
 
-        # Telegram message limit is 4096 chars
         if len(reply) > 4096:
             bot.send_message(message.chat.id, f"✅ Converted! {len(cookies_json)} cookies found.")
             for i in range(0, len(cookie_line), 4000):
@@ -1269,14 +1264,11 @@ def handle_callback(call):
             process_round(chat_id)
 
 # --- /humanizer command ---
-
 @bot.message_handler(commands=['humanizer'])
 def handle_humanizer(message):
     track_command("humanizer", message.from_user.id)
     msg = bot.reply_to(message, "📝 Send the text you want to check:")
     bot.register_next_step_handler(msg, process_humanizer_text)
-
-@bot.message_handler(content_types=['left_chat_member'])
 
 def process_humanizer_text(message):
     text = message.text.strip() if message.text else None
@@ -1345,15 +1337,12 @@ def handle_malware(message):
 def process_malware_input(message):
     vt_key = os.environ.get("VIRUSTOTAL_API_KEY", "")
 
-    # --- URL scan ---
     if message.text and (message.text.startswith("http://") or message.text.startswith("https://")):
         url = message.text.strip()
         status = bot.reply_to(message, "🔍 Submitting URL to VirusTotal...")
 
         def scan_url():
             try:
-                import base64
-                # Submit URL
                 resp = requests.post(
                     "https://www.virustotal.com/api/v3/urls",
                     headers={"x-apikey": vt_key},
@@ -1368,7 +1357,6 @@ def process_malware_input(message):
 
                 bot.edit_message_text("🔬 Scanning URL... Please wait.", message.chat.id, status.message_id)
 
-                # Poll for results (max 90 seconds)
                 for attempt in range(18):
                     time.sleep(5)
                     if attempt == 6:
@@ -1418,7 +1406,6 @@ def process_malware_input(message):
 
         threading.Thread(target=scan_url, daemon=True).start()
 
-    # --- File scan ---
     elif message.document:
         file_size_mb = message.document.file_size / (1024 * 1024)
         if file_size_mb > 20:
@@ -1518,12 +1505,8 @@ def process_translate(message):
 
     def do_translate():
         try:
-            from deep_translator import GoogleTranslator, single_detection
             from deep_translator import GoogleTranslator
-
-            # Auto-detect language and translate to English
             translated = GoogleTranslator(source='auto', target='en').translate(text)
-
             bot.edit_message_text(
                 f"🇬🇧 *English Translation:*\n\n{translated}",
                 message.chat.id, status.message_id,
@@ -1553,6 +1536,7 @@ def process_plagiarism(message):
     def do_plagiarism():
         try:
             import difflib
+            import re
 
             google_api_key = os.environ.get("GOOGLE_API_KEY", "")
             google_cse_id = os.environ.get("GOOGLE_CSE_ID", "")
@@ -1562,9 +1546,8 @@ def process_plagiarism(message):
                 bot.edit_message_text("❌ Search API not configured.", message.chat.id, status.message_id)
                 return
 
-            # Split text into sentences for searching
-            sentences = [s.strip() for s in text.replace('!', '.').replace('?', '.').split('.') if len(s.strip()) > 30]
-            search_queries = sentences[:3]  # Search top 3 sentences
+            sentences = [s.strip() for s in text.replace('!', '.').replace('?', '.').split('.') if len(s.strip()) > 20]
+            search_queries = sentences[:5]
 
             bot.edit_message_text("🌐 Searching online sources...", message.chat.id, status.message_id)
 
@@ -1577,8 +1560,8 @@ def process_plagiarism(message):
                         params={
                             "key": google_api_key,
                             "cx": google_cse_id,
-                            "q": f'"{query[:100]}"',
-                            "num": 3
+                            "q": query[:150],
+                            "num": 5
                         },
                         timeout=15
                     )
@@ -1587,24 +1570,33 @@ def process_plagiarism(message):
                         url = item.get("link", "")
                         title = item.get("title", "Unknown")
                         snippet = item.get("snippet", "")
-                        # Check if already found this URL
+                        pagemap = item.get("pagemap", {})
+                        metatags = pagemap.get("metatags", [{}])[0]
+                        author = metatags.get("author", metatags.get("og:site_name", "Unknown"))
+                        pub_date = metatags.get("article:published_time", metatags.get("date", "Unknown"))
+
                         if not any(s["url"] == url for s in found_sources):
-                            # Calculate similarity
-                            similarity = difflib.SequenceMatcher(None, text.lower(), snippet.lower()).ratio()
+                            similarity = difflib.SequenceMatcher(None, query.lower(), snippet.lower()).ratio()
+                            query_words = set(query.lower().split())
+                            snippet_words = set(snippet.lower().split())
+                            word_overlap = len(query_words & snippet_words) / max(len(query_words), 1)
+                            final_score = max(similarity, word_overlap)
+
                             found_sources.append({
                                 "url": url,
                                 "title": title,
                                 "snippet": snippet,
-                                "similarity": similarity,
+                                "author": author,
+                                "pub_date": pub_date,
+                                "similarity": final_score,
                                 "matching_query": query
                             })
                 except Exception as e:
                     print(f"Search error: {e}")
                     continue
 
-            # Sort by similarity
             found_sources.sort(key=lambda x: x["similarity"], reverse=True)
-            found_sources = found_sources[:5]  # Top 5 sources
+            found_sources = found_sources[:5]
 
             if not found_sources:
                 bot.edit_message_text(
@@ -1618,9 +1610,8 @@ def process_plagiarism(message):
 
             bot.edit_message_text("📊 Generating citations and report...", message.chat.id, status.message_id)
 
-            # Use Groq to generate citations and estimate plagiarism %
             sources_summary = "\n".join([
-                f"- Title: {s['title']}\n  URL: {s['url']}\n  Snippet: {s['snippet'][:150]}"
+                f"- Title: {s['title']}\n  URL: {s['url']}\n  Author: {s.get('author','Unknown')}\n  Date: {s.get('pub_date','Unknown')}\n  Snippet: {s['snippet'][:150]}"
                 for s in found_sources
             ])
 
@@ -1654,15 +1645,12 @@ def process_plagiarism(message):
 
             groq_result = groq_resp.json()
             raw = groq_result["choices"][0]["message"]["content"]
-            # Clean JSON
-            import re
             json_match = re.search(r'\{.*\}', raw, re.DOTALL)
             if not json_match:
                 raise Exception("Could not parse AI response")
 
             report = json.loads(json_match.group())
 
-            # Build output message
             plagiarism_pct = report.get("plagiarism_percent", 0)
             original_pct = report.get("original_percent", 100)
             confidence = report.get("confidence", "Medium")
@@ -1699,7 +1687,6 @@ def process_plagiarism(message):
             if summary:
                 output += f"\n_{summary}_"
 
-            # Split if too long
             if len(output) > 4000:
                 output = output[:3900] + "\n\n_...truncated due to length_"
 
@@ -1711,6 +1698,7 @@ def process_plagiarism(message):
 
     threading.Thread(target=do_plagiarism, daemon=True).start()
 
+@bot.message_handler(content_types=['left_chat_member'])
 def handle_left_member(message):
     chat_id = message.chat.id
     left_user = message.left_chat_member
@@ -1718,7 +1706,6 @@ def handle_left_member(message):
     if chat_id in group_members and user_id in group_members[chat_id]:
         del group_members[chat_id][user_id]
         save_data()
-
 
 @bot.message_handler(func=lambda message: True)
 def track_members(message):
@@ -1756,9 +1743,104 @@ def set_webhook():
     )
     print(f"Webhook set: {result.json()}")
 
+# ============================================================
+# AUTO STREAM WATCHER
+# ============================================================
+
+EVENTS_API = "https://embed.cx/api/events"
+
+TARGET_MATCHES = {
+    "Premier League": [
+        "manchester city", "arsenal", "chelsea",
+        "manchester united", "liverpool"
+    ],
+    "La Liga": [
+        "real madrid", "barcelona"
+    ]
+}
+
+active_auto_streams = {}
+
+def slugify(text):
+    return text.lower().replace(" ", "-").replace(".", "").replace("'", "")
+
+def is_target_match(event):
+    league = event.get("league", "")
+    home = event.get("home", "").lower()
+    away = event.get("away", "").lower()
+
+    for target_league, teams in TARGET_MATCHES.items():
+        if target_league.lower() in league.lower():
+            for team in teams:
+                if team in home or team in away:
+                    return True
+    return False
+
+def get_channel_id(event):
+    home = slugify(event.get("home", ""))
+    away = slugify(event.get("away", ""))
+    league = slugify(event.get("league", ""))
+    return f"{league}_{home}_vs_{away}"[:40]
+
+def auto_stream_watcher():
+    print("🔄 Auto stream watcher started...")
+    while True:
+        try:
+            resp = requests.get(EVENTS_API, timeout=15)
+            data = resp.json()
+            events = data.get("events", [])
+
+            live_ids = set()
+
+            for event in events:
+                event_id = event.get("id")
+                status = event.get("status", "")
+                embed_url = event.get("embed_url", "")
+
+                if not is_target_match(event):
+                    continue
+
+                channel_id = get_channel_id(event)
+
+                if status == "live" and embed_url:
+                    live_ids.add(event_id)
+                    if event_id not in active_auto_streams:
+                        stream_data[channel_id] = embed_url
+                        active_auto_streams[event_id] = channel_id
+                        print(f"✅ Auto-set stream: {channel_id} → {embed_url}")
+
+                elif status == "scheduled" and embed_url:
+                    try:
+                        from datetime import timezone
+                        starts_at = event.get("starts_at", "")
+                        start_time = datetime.fromisoformat(starts_at.replace("Z", "+00:00"))
+                        now = datetime.now(timezone.utc)
+                        diff = (start_time - now).total_seconds()
+                        if 0 <= diff <= 120:
+                            live_ids.add(event_id)
+                            if event_id not in active_auto_streams:
+                                stream_data[channel_id] = embed_url
+                                active_auto_streams[event_id] = channel_id
+                                print(f"✅ Auto-set stream (starting): {channel_id} → {embed_url}")
+                    except Exception as e:
+                        print(f"Time parse error: {e}")
+
+            ended_ids = [eid for eid in active_auto_streams if eid not in live_ids]
+            for eid in ended_ids:
+                channel_id = active_auto_streams.pop(eid)
+                if channel_id in stream_data:
+                    del stream_data[channel_id]
+                    print(f"🗑️ Auto-cleared stream: {channel_id}")
+
+        except Exception as e:
+            print(f"Auto stream watcher error: {e}")
+
+        time.sleep(60)
+
 if __name__ == "__main__":
     print(f"TOKEN loaded: {bool(TOKEN)}")
     print(f"RENDER_URL: {RENDER_URL}")
     set_webhook()
+    threading.Thread(target=auto_stream_watcher, daemon=True).start()
     print("Bot is starting in webhook mode...")
     app.run(host="0.0.0.0", port=PORT)
