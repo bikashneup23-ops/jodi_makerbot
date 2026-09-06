@@ -241,6 +241,11 @@ def track_command(cmd, user_id=None):
 # FLASK ROUTES
 # ============================================================
 
+@app.route('/favicon.ico')
+@app.route('/favicon.png')
+def favicon():
+    return '', 204
+
 @app.route('/')
 def health_check():
     return "Bot is running!", 200
@@ -1804,7 +1809,7 @@ def auto_stream_watcher():
 
                 print(f"[WATCHER] Event: {event.get('match')} | League: {event.get('league')} | Status: {status} | Target: {is_target_match(event)}")
 
-                if status in ("live", "scheduled","premier league", "inprogress", "ongoing", "started", "in_progress") and embed_url:
+                if embed_url:
                     live_ids.add(event_id)
                     if event_id not in active_auto_streams:
                         stream_data[channel_id] = embed_url
